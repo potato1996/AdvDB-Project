@@ -5,13 +5,6 @@ typedef int itemid_t;
 typedef int opid_t;
 typedef int timestamp_t;
 
-// Transaction descriptor
-struct trans_dscr_t {
-	transid_t	trans_id; // transaction id
-	timestamp_t start_ts; // the starting timestamp of this transaction
-	bool		is_ronly; // if this is an read-only transaction
-};
-
 // For now there are only two types of operation
 enum op_type_t {
 	READ,
@@ -36,9 +29,7 @@ union op_param_t {
 
 // An operation looks like: W1(x, v) or R1(x)
 struct op_t{
-	trans_dscr_t trans;
+	transid_t	 trans_id;
 	op_type_t	 op_type;
 	op_param_t	 param;
 };
-
-// Helper functions to deal with data locationing

@@ -9,14 +9,11 @@ public:
 	void Simulate();
 
 	// The response of a read operation
-	void ReadResponse(trans_dscr_t trans, itemid_t item_id, int value);
+	void ReadResponse(transid_t trans, itemid_t item_id, int value);
 
 
 private:
 	timestamp_t _now;
-
-	// Transaction Table
-	std::unordered_map<transid_t, trans_dscr_t> _trans_table;
 
 	//--------------------tester cause events----------------------
 	void Fail(siteid_t site_id);
@@ -28,13 +25,13 @@ private:
 	void Dump(siteid_t site_id);
 
 	//-----------------transaction execution events----------------
-	void Begin(trans_dscr_t trans);
+	void Begin(transid_t trans_id);
 
-	void Finish(trans_dscr_t trans);
+	void Finish(transid_t trans_id);
 
-	void Abort(trans_dscr_t trans);
+	void Abort(transid_t trans_id);
 
-	void Read(trans_dscr_t trans, itemid_t item_id);
+	void Read(transid_t trans_id, itemid_t item_id);
 
-	void Write(trans_dscr_t trans, itemid_t item_id, int value);
+	void Write(transid_t trans_id, itemid_t item_id, int value);
 };

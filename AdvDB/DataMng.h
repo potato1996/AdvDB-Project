@@ -22,7 +22,7 @@ public:
 
 	//-----------------transaction execution events----------------
 	// Abort an transaction
-	void Abort(trans_dscr_t trans);
+	void Abort(transid_t trans_id);
 
 	// Read operation: R1(X)
 	// 1. The result of a read operation may NOT return immediately
@@ -30,15 +30,17 @@ public:
 	// 2. Return false if the site is not reachable (failed),
 	//    or, this item is not readable due to recovery (only when it is a replicated item)
 	// 3. There's also a special case for Read-Only transactions
-	bool Read(trans_dscr_t trans, itemid_t item_id);
+	bool Read(transid_t trans_id, itemid_t item_id);
 
 	// Write operation: W1(X)
 	// return false if the site is not reachable (failed)
-	bool Write(trans_dscr_t trans, itemid_t item_id, int value);
+	bool Write(transid_t trans_id, itemid_t item_id, int value);
+
+	bool Begin(transid_t trans_id, timestamp_t start_time, bool is_readonly);
 
 	// Indicate that a transaction has ended: end(T1)
 	// return false if the site is not reachable (failed)
-	bool Finish(trans_dscr_t trans, timestamp_t commit_time);
+	bool Finish(transid_t trans_id, timestamp_t commit_time);
 
 	// Detect deadlock, return -1 if there's really no deadlocks
 	transid_t DetectDeadLock();
@@ -54,7 +56,7 @@ private:
 		int  value;
 		bool is_readable;
 	};
-	std::unordered_map<itemid_t, mem_item> memory;
+	std::unordered_map<itemid_t, mem_item> _memory;
 
 	// For non-volatile sotrage, we use multi-version control
 	// Here I use a map because the dump function needs an order
@@ -62,21 +64,29 @@ private:
 		int			value;
 		timestamp_t commit_time;
 	};
-	std::map<itemid_t, std::list<disk_item>> disk;
+	std::map<itemid_t, std::list<disk_item>> _disk;
 
 	//------------- Now begin the lock part ----------------------
 	enum lock_type_t {
+		NONE,
 		S,
 		X
 	};
 
 	// The lock structure on each data item
-	struct Lock {
+	struct lock_table_item {
 		lock_type_t			lock_type;
-		std::set<transid_t> now_holding;
+		std::set<transid_t> trans_holding;
 		std::list<op_t>		queued_ops;
 	};
+	std::unordered_map<itemid_t, lock_table_item> _lock_table;
 
-	// Our "lock table"!
-	std::unordered_map<itemid_t, Lock> _locks;
+	//------------- Active Transaction Table ---------------------
+	struct trans_table_item {
+		transid_t	trans_id; // transaction id
+		timestamp_t start_ts; // the starting timestamp of this transaction
+		bool		is_ronly; // if this is an read-only transaction
+		std::list<std::pair<itemid_t, lock_type_t>> locks_holding;
+	};
+	std::unordered_map<transid_t, trans_table_item> _trans_table;
 };
