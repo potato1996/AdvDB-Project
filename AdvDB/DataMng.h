@@ -1,12 +1,15 @@
 #pragma once
 #include"Common.h"
-#include<set>
 #include<map>
 #include<unordered_map>
-#include<queue>
+#include<unordered_set>
 #include<list>
 class DataMng {
 public:
+	//------------- Basic stuffs goes here -----------------------
+	siteid_t _site_id;
+	bool     _is_up;
+
 	// Follow the data initialization rules for the given site_id
 	DataMng(siteid_t site_id);
 	
@@ -27,29 +30,21 @@ public:
 	// Read operation: R1(X)
 	// 1. The result of a read operation may NOT return immediately
 	//    it could be waiting on a X lock
-	// 2. Return false if the site is not reachable (failed),
-	//    or, this item is not readable due to recovery (only when it is a replicated item)
+	// 2. Return false if this item is not readable due to recovery 
+	//    (only when it is a replicated item)
 	// 3. There's also a special case for Read-Only transactions
 	bool Read(transid_t trans_id, itemid_t item_id);
 
 	// Write operation: W1(X)
-	// return false if the site is not reachable (failed)
-	bool Write(transid_t trans_id, itemid_t item_id, int value);
+	void Write(transid_t trans_id, itemid_t item_id, int value);
 
-	bool Begin(transid_t trans_id, timestamp_t start_time, bool is_readonly);
-
-	// Indicate that a transaction has ended: end(T1)
-	// return false if the site is not reachable (failed)
-	bool Finish(transid_t trans_id, timestamp_t commit_time);
+	// Commit a transaction has ended: end(T1) && passed validation
+	void Commit(transid_t trans_id, timestamp_t commit_time);
 
 	// Detect deadlock, return -1 if there's really no deadlocks
 	transid_t DetectDeadLock();
 	
 private:
-	//------------- Basic stuffs goes here -----------------------
-	siteid_t _site_id;
-	bool     _is_up;
-
 	//------------- Storage goes here ----------------------------
 	// For temporal storage(memory), it seems do not need a timestamp version
 	struct mem_item{
@@ -58,7 +53,7 @@ private:
 	};
 	std::unordered_map<itemid_t, mem_item> _memory;
 
-	// For non-volatile sotrage, we use multi-version control
+	// For non-volatile storage(disk), we use multi-version control
 	// Here I use a map because the dump function needs an order
 	struct disk_item {
 		int			value;
@@ -75,15 +70,14 @@ private:
 
 	// The lock structure on each data item
 	struct lock_table_item {
-		lock_type_t			lock_type;
-		std::set<transid_t> trans_holding;
-		std::list<op_t>		queued_ops;
+		lock_type_t					  lock_type;
+		std::unordered_set<transid_t> trans_holding;
+		std::list<op_t>				  queued_ops;
 	};
 	std::unordered_map<itemid_t, lock_table_item> _lock_table;
 
 	//------------- Active Transaction Table ---------------------
 	struct trans_table_item {
-		transid_t	trans_id; // transaction id
 		timestamp_t start_ts; // the starting timestamp of this transaction
 		bool		is_ronly; // if this is an read-only transaction
 		std::list<std::pair<itemid_t, lock_type_t>> locks_holding;

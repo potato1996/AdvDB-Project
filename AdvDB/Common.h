@@ -1,4 +1,7 @@
 #pragma once
+#define CITE_COUNT 10
+
+
 typedef int transid_t;
 typedef int siteid_t;
 typedef int itemid_t;
