@@ -10,29 +10,29 @@ typedef int timestamp_t;
 
 // For now there are only two types of operation
 enum op_type_t {
-	READ,
-	WRITE
+    READ,
+    WRITE
 };
 
 // A write operation have two params: x, v 
 struct w_param_t {
-	itemid_t item_id;
-	int		 value;
+    itemid_t item_id;
+    int      value;
 };
 
 // A read operation only have one param
 struct r_param_t {
-	itemid_t item_id;
+    itemid_t item_id;
 };
 
 union op_param_t {
-	w_param_t w_param;
-	r_param_t r_param;
+    w_param_t w_param;
+    r_param_t r_param;
 };
 
 // An operation looks like: W1(x, v) or R1(x)
 struct op_t{
-	transid_t	 trans_id;
-	op_type_t	 op_type;
-	op_param_t	 param;
+    transid_t     trans_id;
+    op_type_t     op_type;
+    op_param_t    param;
 };
