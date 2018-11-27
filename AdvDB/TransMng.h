@@ -10,12 +10,16 @@ public:
     void Simulate();
 
     // The response of a read operation
-    void ReadResponse(transid_t trans, itemid_t item_id, int value);
+    void ReceiveResponse(op_t op, int value);
 
 
 private:
     //------------- Basic stuffs goes here -----------------------
     timestamp_t _now;
+
+    //------------- Site Status ----------------------------------
+    bool site_status[SITE_COUNT];
+    std::unordered_map<itemid_t, std::list<siteid_t>> _item_sites;
 
     //------------- Active Transaction Table ---------------------
     struct trans_table_item {
@@ -23,10 +27,15 @@ private:
         bool                         is_ronly;
         bool                         will_abort;
         std::unordered_set<siteid_t> visited_sites;
+        trans_table_item(timestamp_t ts, bool ronly) {
+            start_ts   = ts;
+            is_ronly   = ronly;
+            will_abort = false;
+        }
     };
     std::unordered_map<transid_t, trans_table_item> _trans_table;
     
-    // Queued Ops - recall that there could be no available sites
+    // Queued Ops and Finished ops - recall that there could be no available sites
     std::list<op_t> _queued_ops;
 
     //--------------------tester cause events----------------------
@@ -39,7 +48,7 @@ private:
     void Dump(siteid_t site_id);
 
     //-----------------transaction execution events----------------
-    void Begin(transid_t trans_id);
+    void Begin(transid_t trans_id, bool is_ronly);
 
     void Finish(transid_t trans_id);
 

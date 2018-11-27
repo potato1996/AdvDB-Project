@@ -1,5 +1,5 @@
 #pragma once
-#define CITE_COUNT 10
+#define SITE_COUNT 10
 
 
 typedef int transid_t;
@@ -32,6 +32,7 @@ union op_param_t {
 
 // An operation looks like: W1(x, v) or R1(x)
 struct op_t{
+    opid_t        op_id;
     transid_t     trans_id;
     op_type_t     op_type;
     op_param_t    param;
