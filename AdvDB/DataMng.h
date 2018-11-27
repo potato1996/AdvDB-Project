@@ -32,11 +32,14 @@ public:
     //    it could be waiting on a X lock
     // 2. Return false if this item is not readable due to recovery 
     //    (only when it is a replicated item)
-    // 3. There's also a special case for Read-Only transactions
-    bool Read(transid_t trans_id, itemid_t item_id);
+    // Ret: If we are allowed to read this item on this site
+    bool Read(op_t op);
+
+    // Read - Only transactions use multiversion concurrency control
+    bool Ronly(op_t op, timestamp_t ts);
 
     // Write operation: W1(X)
-    void Write(transid_t trans_id, itemid_t item_id, int value);
+    void Write(op_t op);
 
     // Commit a transaction has ended: end(T1) && passed validation
     void Commit(transid_t trans_id, timestamp_t commit_time);
@@ -48,16 +51,25 @@ private:
     //------------- Storage goes here ----------------------------
     // For temporal storage(memory), it seems do not need a timestamp version
     struct mem_item{
-        int  value;
-        bool is_readable;
+        int value;
+        mem_item(int _value) {
+            value       = _value;
+        }
     };
     std::unordered_map<itemid_t, mem_item> _memory;
+
+    // reads will not be allowed at recovered sites until a committed write takes place
+    std::unordered_map<itemid_t, bool> _readable;
 
     // For non-volatile storage(disk), we use multi-version control
     // Here I use a map because the dump function needs an order
     struct disk_item {
         int         value;
         timestamp_t commit_time;
+        disk_item(int _value, timestamp_t _ts) {
+            value = _value;
+            commit_time = _ts;
+        }
     };
     std::map<itemid_t, std::list<disk_item>> _disk;
 
@@ -73,6 +85,9 @@ private:
         lock_type_t                      lock_type;
         std::unordered_set<transid_t>    trans_holding;
         std::list<op_t>                  queued_ops;
+        lock_table_item() {
+            lock_type = NONE;
+        }
     };
     std::unordered_map<itemid_t, lock_table_item> _lock_table;
 
@@ -83,4 +98,8 @@ private:
         std::list<std::pair<itemid_t, lock_type_t>> locks_holding;
     };
     std::unordered_map<transid_t, trans_table_item> _trans_table;
+
+
+    //------------- Internal helper functions ---------------------
+    bool check_conflict(itemid_t item_id, transid_t trans_id, op_type_t op_type);
 };
