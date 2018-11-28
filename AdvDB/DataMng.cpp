@@ -1,5 +1,8 @@
 #include "DataMng.h"
 
+#include <cstdlib>
+#include <iostream>
+
 #include "Common.h"
 #include "TransMng.h"
 
@@ -70,6 +73,9 @@ DataMng::Read(op_t op) {
         }
         lock_item.trans_holding.insert(trans_id);
 
+        // update the transaction table
+        _trans_table[trans_id].locks_holding.insert(item_id);
+
         // execute the operation
         int value = _memory[item_id].value;
 
@@ -79,6 +85,9 @@ DataMng::Read(op_t op) {
     else {
         // append this operation to the end of the lock queue
         _lock_table[item_id].queued_ops.push_back(op);
+
+        // update the transaction table
+        _trans_table[trans_id].locks_waiting.insert(item_id);
     }
 
     return true;
@@ -118,12 +127,18 @@ DataMng::Write(op_t op) {
         }
         lock_item.trans_holding.insert(trans_id);
 
+        // update the transaction table
+        _trans_table[trans_id].locks_holding.insert(item_id);
+
         // execute the operation
         _memory[item_id].value = write_val;
     }
     else {
         // append this operation to the end of the lock queue
         _lock_table[item_id].queued_ops.push_back(op);
+
+        // update the transaction table
+        _trans_table[trans_id].locks_waiting.insert(item_id);
     }
 }
 
@@ -133,64 +148,53 @@ DataMng::Commit(transid_t trans_id, timestamp_t commit_time) {
 }
 
 bool
-DataMng::CheckCommit(transid_t trans_id) {
+DataMng::CheckFinish(transid_t trans_id) {
+
+}
+
+transid_t
+DataMng::DetectDeadLock() {
 
 }
 
 
-
-
 bool 
 DataMng::check_conflict(itemid_t item_id, transid_t trans_id, op_type_t op_type) {
+    static auto err_invalid_case = []() {
+        std::cout << "ERROR: Invalid Switch Case\n";
+        std::exit(-1);
+    };
     const lock_table_item& lock_item = _lock_table[item_id];
-    if (op_type == OP_READ) {
-        if (lock_item.lock_type == NONE) {
-            return true;
-        }
-        else if(lock_item.lock_type == S) {
-            if (lock_item.trans_holding.count(trans_id)) {
-                return true;
-            }
-            else if (lock_item.queued_ops.size() == 0) {
-                return true;
-            }
-            else {
-                return false;
-            }
-        }
-        else {
-            // lock_item.lock_type == X
-            if (lock_item.trans_holding.count(trans_id)) {
-                return true;
-            }
-            else {
-                return false;
-            }
+
+    // I'm believe that for now the followings are incorrect.....
+    switch (op_type) {
+    case OP_READ: {
+        switch (lock_item.lock_type) {
+        case NONE:                                         return true;
+        case S:
+            if (lock_item.trans_holding.count(trans_id))   return true;
+            else if (lock_item.queued_ops.size() == 0)     return true;
+            else                                           return false;
+        case X:
+            if (lock_item.trans_holding.count(trans_id))   return true;
+            else                                           return false;
+        default: err_invalid_case();
         }
     }
-    else {
-        // op_type == OP_WRITE
-        if (lock_item.lock_type == NONE) {
-            return true;
+    case OP_WRITE:
+        switch (lock_item.lock_type) {
+        case NONE:                                         return true;
+        case S:
+            // check if we could safely upgrade the lock
+            if ((lock_item.trans_holding.size() == 1) &&
+                (lock_item.trans_holding.count(trans_id))) return true;
+            else                                           return false;
+        case X:
+            if (lock_item.trans_holding.count(trans_id))   return true;
+            else                                           return false;
+        defaule: err_invalid_case();
         }
-        else if (lock_item.lock_type == S) {
-            // check if we could upgrade the lock
-            if (lock_item.trans_holding.size() == 1 && lock_item.trans_holding.count(trans_id)) {
-                return true;
-            }
-            else {
-                return false;
-            }
-        }
-        else {
-            // lock_item.lock_type == X
-            if (lock_item.trans_holding.count(trans_id)) {
-                return true;
-            }
-            else {
-                return false;
-            }
-        }
+    default: err_invalid_case();
     }
 }
 

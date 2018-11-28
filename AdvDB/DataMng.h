@@ -41,7 +41,10 @@ public:
     // Write operation: W1(X)
     void Write(op_t op);
 
-    // Commit a transaction has ended: end(T1) && passed validation
+    // Check if all operation for the transaction has finished on this site
+    bool CheckFinish(transid_t trans_id);
+
+    // Commit a transaction (the caller should ensure that it is safe to commit)
     void Commit(transid_t trans_id, timestamp_t commit_time);
 
     // Detect deadlock, return -1 if there's really no deadlocks
@@ -93,9 +96,8 @@ private:
 
     //------------- Active Transaction Table ---------------------
     struct trans_table_item {
-        timestamp_t start_ts; // the starting timestamp of this transaction
-        bool        is_ronly; // if this is an read-only transaction
-        std::list<std::pair<itemid_t, lock_type_t>> locks_holding;
+        std::unordered_set<itemid_t> locks_holding;
+        std::unordered_set<itemid_t> locks_waiting;
     };
     std::unordered_map<transid_t, trans_table_item> _trans_table;
 

@@ -16,6 +16,7 @@ public:
 private:
     //------------- Basic stuffs goes here -----------------------
     timestamp_t _now;
+    opid_t      _next_opid;
 
     //------------- Site Status ----------------------------------
     bool site_status[SITE_COUNT];
