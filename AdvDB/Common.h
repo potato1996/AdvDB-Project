@@ -1,6 +1,6 @@
 #pragma once
 #define SITE_COUNT 10
-
+#define ITEM_COUNT 20
 
 typedef int transid_t;
 typedef int siteid_t;
@@ -10,8 +10,9 @@ typedef int timestamp_t;
 
 // For now there are only two types of operation
 enum op_type_t {
-    READ,
-    WRITE
+    OP_READ,
+    OP_WRITE,
+    OP_RONLY
 };
 
 // A write operation have two params: x, v 
