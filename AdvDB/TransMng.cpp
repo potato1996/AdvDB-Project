@@ -80,4 +80,17 @@ TransMng::Begin(transid_t trans_id, bool is_ronly) {
     _trans_table[trans_id] = trans_table_item(trans_id, is_ronly);
 }
 
+void
+TransMng::Read(transid_t trans_id, itemid_t item_id) {
+    // 1. create the op param
+    op_param_t read_param;
+    read_param.r_param.item_id = item_id;
+
+    // 2. create an op
+    op_t read_op(_next_opid, trans_id, OP_READ, read_param);
+
+    // 3. for a read operation, send it to any of the sites should be fine
+
+}
+
 
