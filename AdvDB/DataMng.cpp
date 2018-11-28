@@ -12,6 +12,16 @@ namespace {
     bool is_replicated(itemid_t item_id) {
         return item_id % 2 == 0;
     }
+
+    void err_invalid_case() {
+        std::cout << "ERROR: Invalid Switch Case\n";
+        std::exit(-1);
+    };
+
+    void err_inconsist() {
+        std::cout << "ERROR: Internal state inconsist\n";
+        std::exit(-1);
+    };
 } // helper functions
 
 
@@ -32,6 +42,56 @@ DataMng::DataMng(siteid_t site_id) {
 
         }
     }
+}
+
+void
+DataMng::Abort(transid_t trans_id) {
+    const auto& trans_info = _trans_table[trans_id];
+    
+    // clean up the locks that now holding
+    for (const itemid_t item_id : trans_info.locks_holding) {
+        // clean up lock table
+        lock_table_item &lock_item = _lock_table[item_id];
+
+        // Ensure that we really hold this lock - i.e. 2pc holds
+        if (!lock_item.trans_holding.count(trans_id)) {
+            err_inconsist();
+        }
+
+        // clean up lock table
+        lock_item.trans_holding.erase(trans_id);
+
+        // free up the lock
+        if (lock_item.trans_holding.empty()) {
+            lock_item.lock_type = NONE;
+        }
+    }
+
+    // clean up the ops that now waiting
+    for (const itemid_t item_id : trans_info.locks_waiting) {
+        // clean up lock table
+        lock_table_item &lock_item = _lock_table[item_id];
+
+        // remove all the commands by trans_id
+        lock_item.queued_ops.remove_if([trans_id](const op_t& op) {
+            op.trans_id == trans_id;
+        });
+    }
+
+    // clean up trans table
+    _trans_table.erase(trans_id);
+
+    // now we freed up some locks, hopefully we can execute some commands
+    try_execute();
+}
+
+void
+DataMng::Dump() {
+    std::cout << "site " << _site_id << " - ";
+    for (const auto& p : _disk) {
+        std::cout << "x" << p.first << ": " << p.second.front().value <<", ";
+    }
+    std::cout << std::endl;
 }
 
 void
@@ -144,26 +204,102 @@ DataMng::Write(op_t op) {
 
 void
 DataMng::Commit(transid_t trans_id, timestamp_t commit_time) {
+    auto err_not_safe_commit = [](){
+        std::cout << "ERROR: NOT safe to commit\n";
+    };
 
+    if (!CheckFinish(trans_id)) {
+        err_not_safe_commit();
+    }
+
+    // clean up the locks and write everything back to disk
+    for (itemid_t item_id : _trans_table[trans_id].locks_holding) {
+        lock_table_item &lock_item = _lock_table[item_id];
+        
+        // Ensure that we really hold this lock - i.e. 2pc holds
+        if (!lock_item.trans_holding.count(trans_id)) {
+            err_inconsist();
+        }
+
+        // clean up lock table
+        lock_item.trans_holding.erase(trans_id);
+
+        // free up the lock
+        if (lock_item.trans_holding.empty()) {
+            lock_item.lock_type = NONE;
+        }
+
+        // write values back to disk
+        int value = _memory[item_id].value;
+        _disk[item_id].push_front(disk_item(value, commit_time));
+
+        // now we allow to read this value
+        _readable[item_id] = true;
+    }
+
+    // clean up transaction table
+    _trans_table.erase(trans_id);
+
+    // now, since we have committed a transaction, hopefully we can finish some queued operations
+    try_execute();
+}
+
+void
+DataMng::try_execute() {
+    bool flag = true;
+    while (flag) {
+        flag = false;
+        for (auto &p : _lock_table) {
+            itemid_t        item_id = p.first;
+            lock_table_item &lock_item = p.second;
+            if (!lock_item.queued_ops.empty()) {
+                // we peek at the next operation, and check if we are safe to execute it
+                op_t next_op = lock_item.queued_ops.front();
+
+                switch (next_op.op_type) {
+                case OP_READ:
+                    itemid_t  next_item_id  = next_op.param.r_param.item_id;
+                    transid_t next_trans_id = next_op.trans_id;
+                    if ((lock_item.lock_type == S) ||
+                        (check_conflict(next_item_id, next_trans_id, OP_READ))) {
+                        // now we should be able to execute this op
+                        lock_item.queued_ops.pop_front();
+                        Read(next_op);
+                        flag = true;
+                    }
+                    break;
+                case OP_WRITE:
+                    itemid_t  next_item_id  = next_op.param.w_param.item_id;
+                    int       write_val     = next_op.param.w_param.value;
+                    transid_t next_trans_id = next_op.trans_id;
+                    if (check_conflict(next_item_id, next_trans_id, OP_WRITE)) {
+                        // now we should be able to execute this op
+                        lock_item.queued_ops.pop_front();
+                        Write(next_op);
+                        flag = true;
+                    }
+                    break;
+                default:
+                    err_invalid_case();
+                }
+            }
+        }
+    }
 }
 
 bool
 DataMng::CheckFinish(transid_t trans_id) {
-
+    return _trans_table[trans_id].locks_waiting.empty();
 }
 
 transid_t
 DataMng::DetectDeadLock() {
-
+    // TODO
 }
 
 
 bool 
 DataMng::check_conflict(itemid_t item_id, transid_t trans_id, op_type_t op_type) {
-    static auto err_invalid_case = []() {
-        std::cout << "ERROR: Invalid Switch Case\n";
-        std::exit(-1);
-    };
     const lock_table_item& lock_item = _lock_table[item_id];
 
     // I'm believe that for now the followings are incorrect.....

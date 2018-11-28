@@ -104,4 +104,6 @@ private:
 
     //------------- Internal helper functions ---------------------
     bool check_conflict(itemid_t item_id, transid_t trans_id, op_type_t op_type);
+
+    void try_execute();
 };

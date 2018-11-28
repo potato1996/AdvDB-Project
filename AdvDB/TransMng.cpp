@@ -8,7 +8,7 @@
 #include"TransMng.h"
 #include"DataMng.h"
 
-extern DataMng* sites[SITE_COUNT];
+extern DataMng* DM[SITE_COUNT];
 
 namespace {
     void print_command_error() {
