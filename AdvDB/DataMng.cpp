@@ -24,7 +24,6 @@ namespace {
     };
 } // helper functions
 
-
 DataMng::DataMng(siteid_t site_id) {
     // basic stuff
     _site_id = site_id;
@@ -147,7 +146,7 @@ DataMng::Read(op_t op) {
         int value = _memory[item_id].value;
 
         // send the result back to TM
-        TM->ReceiveResponse(op, value);
+        TM->ReceiveReadResponse(op, value);
     }
     else {
         // append this operation to the end of the lock queue
@@ -172,7 +171,7 @@ DataMng::Ronly(op_t op, timestamp_t ts) {
     const auto& value_list = _disk[item_id];
     for (auto it = value_list.begin(); it != value_list.end(); it++) {
         if (it->commit_time <= ts) {
-            TM->ReceiveResponse(op, it->value);
+            TM->ReceiveReadResponse(op, it->value);
             break;
         }
     }
@@ -204,6 +203,9 @@ DataMng::Write(op_t op) {
 
         // execute the operation
         _memory[item_id].value = write_val;
+
+        // Report to TM that we have finished a write
+        TM->ReceiveWriteResponse(op);
     }
     else {
         // append this operation to the end of the lock queue
@@ -220,12 +222,12 @@ DataMng::Commit(transid_t trans_id, timestamp_t commit_time) {
         std::cout << "ERROR: NOT safe to commit\n";
     };
 
-    if (!CheckFinish(trans_id)) {
-        err_not_safe_commit();
-    }
-
     if (!_trans_table.count(trans_id)) {
         return;
+    }
+
+    if (!CheckFinish(trans_id)) {
+        err_not_safe_commit();
     }
 
     // clean up the locks and write everything back to disk

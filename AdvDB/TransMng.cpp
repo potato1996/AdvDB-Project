@@ -42,12 +42,12 @@ namespace {
     }
 } 
 
-
-TransMng::TransMng() {
+void
+TransMng::Simulate(std::istream inputs) {
     std::string line_buffer;
-    while (std::getline(std::cin, line_buffer)) {
+    while (std::getline(inputs, line_buffer)) {
         auto parsed_line = parse_line(line_buffer);
-        
+
         if (parsed_line.size() == 0) {
             print_command_error();
         }
@@ -55,7 +55,7 @@ TransMng::TransMng() {
         auto command_type = parsed_line[0];
         if (command_type == "begin") {
             // begin(Tn)
-            transid_t trans_id = get_trans_id(parsed_line[1]); 
+            transid_t trans_id = get_trans_id(parsed_line[1]);
             Begin(trans_id, false);
         }
         else if (command_type == "beginRO") {
@@ -75,13 +75,12 @@ TransMng::TransMng() {
     }
 }
 
-void
-TransMng::Simulate() {
-
+TransMng::TransMng() {
 }
 
+
 void
-TransMng::ReceiveResponse(op_t op, int value) {
+TransMng::ReceiveReadResponse(op_t op, int value) {
  
 }
 
