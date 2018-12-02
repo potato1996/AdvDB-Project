@@ -324,7 +324,46 @@ DataMng::CheckFinish(transid_t trans_id) {
 
 transid_t
 DataMng::DetectDeadLock() {
-    // TODO
+    queue<trasid_t> currentZeroIn;
+    map<transid_t, int> indegree;
+    for (auto p: _trans_table) {
+        indegree[p.first] = 0;
+    }
+    for (auto p : _trans_table) {
+        transid_t  trans_id = p.first;
+        for (itemid_t item_id : trans_table[trans_id].locks_waiting) {
+            for (transid_t next_id : _lock_table[item_id].trans_holding) {
+                if (next_id != trans_id) {
+                    indegree[next_id] ++;
+                }
+            }
+        }
+    }
+    for (auto p : indegree) {
+        if (p.second == 0)
+            currentZeroIn.push(p.first);
+    }
+    while (!currentZeroIn.isEmpty()) {
+        transid_t id = currentZeroIn.pop();
+        for (itemid_t item_id : trans_table[id].locks_waiting) {
+            for (transid_t next_id : _lock_table[item_id].trans_holding) {
+                if (--indegree[next_id] == 0) {
+                    currentZeroIn.push(next_id);
+                }
+            }
+        }
+    }
+    int oldest = -1;
+    int oldest_transid = -1;
+    for (auto p : indegree) {
+        if (p.second != 0) {
+            if (oldest < _trans_table[p.first].start_ts) {
+                oldest = _trans_table[p.first].start_ts;
+                oldest_transid = p.first;
+            }
+        }
+    }
+    return oldest_transid;
 }
 
 
