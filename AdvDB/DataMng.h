@@ -7,8 +7,9 @@
 class DataMng {
 public:
     //------------- Basic stuffs goes here -----------------------
-    siteid_t _site_id;
-    bool     _is_up;
+    siteid_t     _site_id;
+    bool         _is_up;
+    timestamp_t  _last_up_time;
 
     // Follow the data initialization rules for the given site_id
     DataMng(siteid_t site_id);
@@ -18,7 +19,7 @@ public:
     void Fail();
 
     // Recover this site
-    void Recover();
+    void Recover(timestamp_t _ts);
 
     // Dump the disk values
     void Dump();
@@ -55,6 +56,7 @@ private:
     // For temporal storage(memory), it seems do not need a timestamp version
     struct mem_item{
         int value;
+        mem_item() {}
         mem_item(int _value) {
             value       = _value;
         }
@@ -69,6 +71,7 @@ private:
     struct disk_item {
         int         value;
         timestamp_t commit_time;
+        disk_item() {}
         disk_item(int _value, timestamp_t _ts) {
             value = _value;
             commit_time = _ts;
@@ -99,6 +102,7 @@ private:
         timestamp_t                  start_ts;
         std::unordered_set<itemid_t> locks_holding;
         std::unordered_set<itemid_t> locks_waiting;
+        trans_table_item() {}
         trans_table_item(timestamp_t _ts) {
             start_ts = _ts;
         }

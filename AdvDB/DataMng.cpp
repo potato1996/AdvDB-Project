@@ -26,14 +26,15 @@ namespace {
 
 DataMng::DataMng(siteid_t site_id) {
     // basic stuff
-    _site_id = site_id;
-    _is_up = true;
+    _site_id      = site_id;
+    _is_up        = true;
+    _last_up_time = -1;
 
     // initialize the data items
     for (itemid_t item_id = 1; item_id <= ITEM_COUNT; item_id++) {
         if ((item_id % 2 == 0) || (1 + (item_id % 10) == site_id)) {
-            // commit time = 0 means initial values
-            _disk[item_id].push_back(disk_item(item_id * 10, 0));
+            // commit time = -1 means initial values
+            _disk[item_id].push_back(disk_item(item_id * 10, -1));
 
             // since we have small number of data items, we can cache all of them in memory
             _memory[item_id] = mem_item(item_id * 10);
@@ -74,7 +75,7 @@ DataMng::Abort(transid_t trans_id) {
 
         // remove all the commands by trans_id
         lock_item.queued_ops.remove_if([trans_id](const op_t& op) {
-            op.trans_id == trans_id;
+            return op.trans_id == trans_id;
         });
     }
 
@@ -105,8 +106,9 @@ DataMng::Fail() {
 }
 
 void
-DataMng::Recover() {
-    _is_up = true;
+DataMng::Recover(timestamp_t _ts) {
+    _is_up        = true;
+    _last_up_time = _ts;
 
     // we don't allow to read replicated data until we COMMIT a write on it
     for (const auto& p : _disk) {
@@ -163,20 +165,25 @@ bool
 DataMng::Ronly(op_t op, timestamp_t ts) {
     itemid_t  item_id  = op.param.r_param.item_id;
     transid_t trans_id = op.trans_id;
-    if (!_readable[item_id]) {
-        return false;
-    }
 
     // go through the disk, find the latest commit before this ts
     const auto& value_list = _disk[item_id];
     for (auto it = value_list.begin(); it != value_list.end(); it++) {
         if (it->commit_time <= ts) {
-            TM->ReceiveReadResponse(op, it->value);
-            break;
+            // for r-only transactions, we have a different logic of "non-readable":
+            // We need the found commit to be after latest recover time
+            if (it->commit_time < _last_up_time) {
+                return false;
+            }
+            else {
+                TM->ReceiveReadResponse(op, it->value);
+                return true;
+            }
         }
     }
 
-    return true;
+    err_inconsist();
+    return false;
 }
 
 void
@@ -275,8 +282,8 @@ DataMng::try_execute() {
                 op_t next_op = lock_item.queued_ops.front();
 
                 switch (next_op.op_type) {
-                case OP_READ:
-                    itemid_t  next_item_id  = next_op.param.r_param.item_id;
+                case OP_READ: {
+                    itemid_t  next_item_id = next_op.param.r_param.item_id;
                     transid_t next_trans_id = next_op.trans_id;
                     if ((lock_item.lock_type == S) ||
                         (check_conflict(next_item_id, next_trans_id, OP_READ))) {
@@ -286,9 +293,10 @@ DataMng::try_execute() {
                         flag = true;
                     }
                     break;
-                case OP_WRITE:
-                    itemid_t  next_item_id  = next_op.param.w_param.item_id;
-                    int       write_val     = next_op.param.w_param.value;
+                }
+                case OP_WRITE: {
+                    itemid_t  next_item_id = next_op.param.w_param.item_id;
+                    int       write_val = next_op.param.w_param.value;
                     transid_t next_trans_id = next_op.trans_id;
                     if (check_conflict(next_item_id, next_trans_id, OP_WRITE)) {
                         // now we should be able to execute this op
@@ -297,6 +305,7 @@ DataMng::try_execute() {
                         flag = true;
                     }
                     break;
+                }
                 default:
                     err_invalid_case();
                 }
@@ -349,9 +358,10 @@ DataMng::check_conflict(itemid_t item_id, transid_t trans_id, op_type_t op_type)
         case X:
             if (lock_item.trans_holding.count(trans_id))   return true;
             else                                           return false;
-        defaule: err_invalid_case();
+        default: err_invalid_case();
         }
     default: err_invalid_case();
     }
+    return false;
 }
 

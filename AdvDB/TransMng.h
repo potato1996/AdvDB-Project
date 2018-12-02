@@ -36,6 +36,7 @@ private:
         bool                         will_abort;
         bool                         waiting_commit;
         std::unordered_set<siteid_t> visited_sites;
+        trans_table_item() {}
         trans_table_item(timestamp_t ts, bool ronly) {
             start_ts       = ts;
             is_ronly       = ronly;
