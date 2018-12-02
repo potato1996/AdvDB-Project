@@ -25,7 +25,8 @@ private:
     opid_t      _next_opid;
 
     //------------- Site Status ----------------------------------
-    bool _site_status[SITE_COUNT];
+    // For simplicity we deal with the annoying 1-index here
+    bool _site_status[SITE_COUNT + 1];
 
     std::unordered_map<itemid_t, std::list<siteid_t>> _item_sites;
 
@@ -41,7 +42,6 @@ private:
             start_ts       = ts;
             is_ronly       = ronly;
             will_abort     = false;
-            waiting_commit = false;
         }
     };
     std::unordered_map<transid_t, trans_table_item> _trans_table;
@@ -56,16 +56,22 @@ private:
 
     void DumpAll();
 
-    void Dump(siteid_t site_id);
+    void DumpSite(siteid_t site_id);
+
+    void DumpItem(itemid_t item_id);
 
     //-----------------transaction execution events----------------
+    void ExecuteCommand(std::string line);
+
     void Begin(transid_t trans_id, bool is_ronly);
 
     void Finish(transid_t trans_id);
 
     void Abort(transid_t trans_id);
 
-    void Read(transid_t trans_id, itemid_t item_id);
+    bool Read(op_t op);
 
-    void Write(transid_t trans_id, itemid_t item_id, int value);
+    bool Ronly(op_t op);
+
+    bool Write(op_t op);
 };
