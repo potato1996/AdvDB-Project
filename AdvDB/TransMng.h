@@ -61,6 +61,8 @@ private:
     void DumpItem(itemid_t item_id);
 
     //-----------------transaction execution events----------------
+    bool DetectDeadLock();
+    
     void ExecuteCommand(std::string line);
 
     void Begin(transid_t trans_id, bool is_ronly);

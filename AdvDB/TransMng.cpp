@@ -213,8 +213,12 @@ TransMng::Fail(siteid_t site_id){
 
         // Abort the 2pc transactions that accessed this site so far
         for(auto &p: _trans_table){
-            if(!p.second.is_ronly && p.second.visited_sites.count(site_id)){
-                std::cout << "Transaction T" << p.first << " aborted due to site fail\n";
+            if((!p.second.is_ronly)
+               && (!p.second.will_abort)
+               && (p.second.visited_sites.count(site_id))){
+                std::cout << "Transaction T" << p.first 
+                    << " aborted, because it has accessed Site " << site_id
+                    << " and this site failed\n";
                 Abort(p.first);
             }
         }
