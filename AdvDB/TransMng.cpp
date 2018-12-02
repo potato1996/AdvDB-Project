@@ -16,6 +16,17 @@ namespace {
         std::exit(-1);
     }
 
+    transid_t get_trans_id(std::string s) {
+        try {
+            transid_t trans_id = std::stoi(s.substr(1));
+            return trans_id;
+        }
+        catch (...) {
+            print_command_error();
+            return -1;
+        }
+    }
+
     // seperate the input string with '(', ',' or ')'
     std::vector<std::string> parse_line(std::string line) {
         std::vector<std::string> parsed;
@@ -29,8 +40,6 @@ namespace {
       
         return parsed;
     }
-
-
 } 
 
 
@@ -45,13 +54,17 @@ TransMng::TransMng() {
 
         auto command_type = parsed_line[0];
         if (command_type == "begin") {
-
+            // begin(Tn)
+            transid_t trans_id = get_trans_id(parsed_line[1]); 
+            Begin(trans_id, false);
         }
         else if (command_type == "beginRO") {
-
+            // beginRO(Tn)
+            transid_t trans_id = get_trans_id(parsed_line[1]);
+            Begin(trans_id, true);
         }
         else if (command_type == "end") {
-            
+            // 
         }
         else if (command_type == "W") {
 

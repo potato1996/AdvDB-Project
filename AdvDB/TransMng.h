@@ -12,6 +12,9 @@ public:
     // The response of a read operation
     void ReceiveResponse(op_t op, int value);
 
+    // DMs would use it to get the start time of transactions
+    // Will be used to determine which to abort at cycle detection
+    timestamp_t QueryTransStartTime(transid_t trans_id);
 
 private:
     //------------- Basic stuffs goes here -----------------------
@@ -19,7 +22,8 @@ private:
     opid_t      _next_opid;
 
     //------------- Site Status ----------------------------------
-    bool site_status[SITE_COUNT];
+    bool _site_status[SITE_COUNT];
+
     std::unordered_map<itemid_t, std::list<siteid_t>> _item_sites;
 
     //------------- Active Transaction Table ---------------------
@@ -27,11 +31,13 @@ private:
         timestamp_t                  start_ts;
         bool                         is_ronly;
         bool                         will_abort;
+        bool                         waiting_commit;
         std::unordered_set<siteid_t> visited_sites;
         trans_table_item(timestamp_t ts, bool ronly) {
-            start_ts   = ts;
-            is_ronly   = ronly;
-            will_abort = false;
+            start_ts       = ts;
+            is_ronly       = ronly;
+            will_abort     = false;
+            waiting_commit = false;
         }
     };
     std::unordered_map<transid_t, trans_table_item> _trans_table;

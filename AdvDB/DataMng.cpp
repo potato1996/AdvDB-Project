@@ -46,6 +46,7 @@ DataMng::DataMng(siteid_t site_id) {
 
 void
 DataMng::Abort(transid_t trans_id) {
+    if (!_trans_table.count(trans_id))return;
     const auto& trans_info = _trans_table[trans_id];
     
     // clean up the locks that now holding
@@ -121,8 +122,14 @@ bool
 DataMng::Read(op_t op) {
     itemid_t  item_id  = op.param.r_param.item_id;
     transid_t trans_id = op.trans_id;
+    
     if (!_readable[item_id]) {
         return false;
+    }
+
+    // initialize transaction table item, if this is the first time we met it.
+    if (!_trans_table.count(trans_id)) {
+        _trans_table[trans_id] = trans_table_item(TM->QueryTransStartTime(trans_id));
     }
 
     if (check_conflict(item_id, trans_id, OP_READ)) {
@@ -179,6 +186,11 @@ DataMng::Write(op_t op) {
     int       write_val = op.param.w_param.value;
     transid_t trans_id  = op.trans_id;
 
+    // initialize transaction table item, if this is the first time we met it.
+    if (!_trans_table.count(trans_id)) {
+        _trans_table[trans_id] = trans_table_item(TM->QueryTransStartTime(trans_id));
+    }
+
     if (check_conflict(item_id, trans_id, OP_WRITE)) {
         // upgrade the lock type
         lock_table_item& lock_item = _lock_table[item_id];
@@ -210,6 +222,10 @@ DataMng::Commit(transid_t trans_id, timestamp_t commit_time) {
 
     if (!CheckFinish(trans_id)) {
         err_not_safe_commit();
+    }
+
+    if (!_trans_table.count(trans_id)) {
+        return;
     }
 
     // clean up the locks and write everything back to disk
@@ -289,6 +305,9 @@ DataMng::try_execute() {
 
 bool
 DataMng::CheckFinish(transid_t trans_id) {
+    if (!_trans_table.count(trans_id)) {
+        return true;
+    }
     return _trans_table[trans_id].locks_waiting.empty();
 }
 

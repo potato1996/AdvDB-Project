@@ -29,5 +29,8 @@
     <ClCompile Include="TransMng.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
+    <ClCompile Include="DataMng.cpp">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -37,7 +37,7 @@ struct op_t{
     transid_t     trans_id;
     op_type_t     op_type;
     op_param_t    param;
-    op_t(opid_t     _op_id,
+    op_t(opid_t    _op_id,
         transid_t  _trans_id,
         op_type_t  _op_type,
         op_param_t _op_param) {

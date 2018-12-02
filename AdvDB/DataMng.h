@@ -96,8 +96,12 @@ private:
 
     //------------- Active Transaction Table ---------------------
     struct trans_table_item {
+        timestamp_t                  start_ts;
         std::unordered_set<itemid_t> locks_holding;
         std::unordered_set<itemid_t> locks_waiting;
+        trans_table_item(timestamp_t _ts) {
+            start_ts = _ts;
+        }
     };
     std::unordered_map<transid_t, trans_table_item> _trans_table;
 
