@@ -21,8 +21,11 @@ public:
     // Recover this site
     void Recover(timestamp_t _ts);
 
-    // Dump the disk values
+    // Dump all of the disk values
     void Dump();
+
+    // Dump one item
+    void DumpItem(itemid_t item_id);
 
     //-----------------transaction execution events----------------
     // Abort an transaction
@@ -111,7 +114,10 @@ private:
 
 
     //------------- Internal helper functions ---------------------
+    // Return true if it is safe to execute. false otherwise
     bool check_conflict(itemid_t item_id, transid_t trans_id, op_type_t op_type);
 
+    // Try to execute queued operations in the lock table
+    // (will do recursivly until no more new ops can be executed)
     void try_execute();
 };

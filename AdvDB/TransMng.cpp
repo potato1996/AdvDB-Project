@@ -35,6 +35,20 @@ namespace {
         }
     }
 
+    siteid_t parse_site_id(std::string s) {
+        try{
+            int site_id = std::stoi(s);
+            if(site_id < 1 || site_id > SITE_COUNT){
+                print_command_error();
+                return -1;
+            }
+        }
+        catch (...) {
+            print_command_error();
+            return -1;
+        }
+    }
+
     itemid_t parse_item_id(std::string s){
         try {
             int item_id = std::stoi(s.substr(1));
@@ -127,6 +141,8 @@ TransMng::ExecuteCommand(std::string line){
     }
     else if (command_type == "end") {
         // end(Tn)
+        transid_t trans_id = parse_trans_id(parsed_line[1]);
+        Finish(trans_id);
     }
     else if (command_type == "W") {
         // W(Tn, xn, v)
@@ -200,6 +216,38 @@ TransMng::ExecuteCommand(std::string line){
             }
         }
     }
+    else if (command_type == "fail"){
+        siteid_t site_id = parse_site_id(parsed_line[1]);
+        Fail(site_id);
+    }
+    else if(command_type == "Recover"){
+        siteid_t site_id = parse_site_id(parsed_line[1]);
+        Recover(site_id);
+    }
+    else if(command_type == "dump"){
+        if(parsed_line.size() == 1){
+            // dump()
+            DumpAll();
+        }
+        else if(parsed_line.size() == 2){
+            if(parsed_line[1][0] == 'x'){
+                // dump(xi)
+                itemid_t item_id = parse_item_id(parsed_line[1]);
+                DumpItem(item_id);
+            }
+            else{
+                // dump(s)
+                siteid_t site_id = parse_site_id(parsed_line[1]);
+                DumpSite(site_id);
+            }
+        }
+        else{
+            print_command_error();
+        }
+    }
+    else{
+        print_command_error();
+    }
 }
 
 
@@ -210,6 +258,7 @@ TransMng::Fail(siteid_t site_id){
     if(_site_status[site_id]){
         // fail the dm
         DM[site_id]->Fail();
+        _site_status[site_id] = false;
 
         // Abort the 2pc transactions that accessed this site so far
         for(auto &p: _trans_table){
@@ -231,6 +280,7 @@ TransMng::Fail(siteid_t site_id){
 void
 TransMng::Recover(siteid_t site_id){
     DM[site_id]->Recover(_now);
+    _site_status[site_id] = true;
 }
 
 void 
@@ -253,6 +303,24 @@ TransMng::DumpItem(itemid_t item_id){
 }
 
 // -------------------- Transaction Execution Events -------------------------
+
+bool 
+TransMng::DetectDeadLock(){
+    for(siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++){
+        if(_site_status[site_id]){
+            if((transid_t trans_id = DM[site_id]->DetectDeadLock()) != -1){
+                std::cout << "Transaction T" << trans_id << " will be aborted. "
+                std::cout << "Because Site " << site_id << " reports a deadlock.\n"
+                Abort(trans_id);
+            }
+        }
+    }
+}
+
+void
+TransMng::TryExecuteQueue(){
+    
+}
 
 void
 TransMng::ReceiveReadResponse(op_t op, int value) {
@@ -301,7 +369,9 @@ TransMng::Finish(transid_t trans_id){
         for(siteid_t site_id: _trans_table[trans_id].visited_sites){
             DM[site_id]->Commit(trans_id, _now);
         }
+        std::cout << "Transaction T" << trans_id << " finished succesfully!\n";   
     }
+    _trans_table.erase(trans_id);
 }
 
 void

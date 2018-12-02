@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <queue>
 
 #include "Common.h"
 #include "TransMng.h"
@@ -96,6 +97,12 @@ DataMng::Dump() {
 }
 
 void
+DataMng::DumpItem(itemid_t item_id){
+    std::cout << "site " << _site_id << " - ";
+    std::cout << "x" << item_id << ": " << _disk[item_id].front().value << std::endl;
+}
+
+void
 DataMng::Fail() {
     // simply clean up the memory related stuff
     _is_up = false;
@@ -172,7 +179,7 @@ DataMng::Ronly(op_t op, timestamp_t ts) {
         if (it->commit_time <= ts) {
             // for r-only transactions, we have a different logic of "non-readable":
             // We need the found commit to be after latest recover time
-            if (it->commit_time < _last_up_time) {
+            if (is_replicated(item_id) && it->commit_time < _last_up_time) {
                 return false;
             }
             else {
@@ -246,6 +253,12 @@ DataMng::Commit(transid_t trans_id, timestamp_t commit_time) {
             err_inconsist();
         }
 
+        // write values back to disk
+        if(lock_item.lock_type == X){
+            int value = _memory[item_id].value;
+            _disk[item_id].push_front(disk_item(value, commit_time));
+        }
+
         // clean up lock table
         lock_item.trans_holding.erase(trans_id);
 
@@ -253,10 +266,6 @@ DataMng::Commit(transid_t trans_id, timestamp_t commit_time) {
         if (lock_item.trans_holding.empty()) {
             lock_item.lock_type = NONE;
         }
-
-        // write values back to disk
-        int value = _memory[item_id].value;
-        _disk[item_id].push_front(disk_item(value, commit_time));
 
         // now we allow to read this value
         _readable[item_id] = true;
@@ -288,6 +297,7 @@ DataMng::try_execute() {
                     if ((lock_item.lock_type == S) ||
                         (check_conflict(next_item_id, next_trans_id, OP_READ))) {
                         // now we should be able to execute this op
+                        _trans_table[next_trans_id].locks_waiting.erase(item_id);
                         lock_item.queued_ops.pop_front();
                         Read(next_op);
                         flag = true;
@@ -300,6 +310,7 @@ DataMng::try_execute() {
                     transid_t next_trans_id = next_op.trans_id;
                     if (check_conflict(next_item_id, next_trans_id, OP_WRITE)) {
                         // now we should be able to execute this op
+                        _trans_table[next_trans_id].locks_waiting.erase(item_id);
                         lock_item.queued_ops.pop_front();
                         Write(next_op);
                         flag = true;
@@ -324,8 +335,8 @@ DataMng::CheckFinish(transid_t trans_id) {
 
 transid_t
 DataMng::DetectDeadLock() {
-    queue<trasid_t> currentZeroIn;
-    map<transid_t, int> indegree;
+    std::queue<trasid_t> currentZeroIn;
+    std::unordered_map<transid_t, int> indegree;
     for (auto p: _trans_table) {
         indegree[p.first] = 0;
     }
@@ -344,7 +355,8 @@ DataMng::DetectDeadLock() {
             currentZeroIn.push(p.first);
     }
     while (!currentZeroIn.isEmpty()) {
-        transid_t id = currentZeroIn.pop();
+        transid_t id = currentZeroIn.front();
+        currentZeroIn.pop();
         for (itemid_t item_id : trans_table[id].locks_waiting) {
             for (transid_t next_id : _lock_table[item_id].trans_holding) {
                 if (--indegree[next_id] == 0) {
@@ -365,7 +377,6 @@ DataMng::DetectDeadLock() {
     }
     return oldest_transid;
 }
-
 
 bool 
 DataMng::check_conflict(itemid_t item_id, transid_t trans_id, op_type_t op_type) {
