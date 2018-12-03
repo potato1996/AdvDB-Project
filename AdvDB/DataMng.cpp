@@ -160,7 +160,7 @@ DataMng::Read(op_t op) {
         int value = _memory[item_id].value;
 
         // send the result back to TM
-        TM->ReceiveReadResponse(op, value);
+        TM->ReceiveReadResponse(op, _site_id, value);
     }
     else {
         // append this operation to the end of the lock queue
@@ -188,7 +188,7 @@ DataMng::Ronly(op_t op, timestamp_t ts) {
                 return false;
             }
             else {
-                TM->ReceiveReadResponse(op, it->value);
+                TM->ReceiveReadResponse(op, _site_id, it->value);
                 return true;
             }
         }
@@ -224,7 +224,7 @@ DataMng::Write(op_t op) {
         _memory[item_id].value = write_val;
 
         // Report to TM that we have finished a write
-        TM->ReceiveWriteResponse(op);
+        TM->ReceiveWriteResponse(op, _site_id);
     }
     else {
         // append this operation to the end of the lock queue
@@ -339,6 +339,7 @@ DataMng::CheckFinish(transid_t trans_id) {
 }
 
 namespace {
+    // dfs-based cycle detector
     bool dfs_cycle(transid_t curr, 
                    transid_t root,
                    std::unordered_map<transid_t, std::list<transid_t>>& graph,
@@ -349,7 +350,9 @@ namespace {
                 return true;
             }
             if (!mark_global.count(child)) {
-                dfs_cycle(child, root, graph, mark_global);
+                if (dfs_cycle(child, root, graph, mark_global)) {
+                    return true;
+                }
             }
         }
         return false;
@@ -371,6 +374,7 @@ DataMng::DetectDeadLock() {
         }
     }
 
+    // 2. find the oldest transaction that in a cycle
     int oldest = -1;
     int oldest_transid = -1;
     for (const auto &p : _trans_table) {

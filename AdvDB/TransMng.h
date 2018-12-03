@@ -7,13 +7,13 @@ public:
     TransMng();
 
     // The main simulation loop
-    void Simulate(std::istream inputs);
+    void Simulate(std::istream& inputs);
 
     // The response of a read operation
-    void ReceiveReadResponse(op_t op, int value);
+    void ReceiveReadResponse(op_t op, siteid_t site_id, int value);
 
     // The response of a write operation
-    void ReceiveWriteResponse(op_t op);
+    void ReceiveWriteResponse(op_t op, siteid_t site_id);
 
     // DMs would use it to get the start time of transactions
     // Will be used to determine which to abort at cycle detection

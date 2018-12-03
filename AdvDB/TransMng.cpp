@@ -21,7 +21,7 @@ namespace {
     }
 
     void print_abort(transid_t trans_id) {
-        std::cout << "Transaction T" << trans_id << " will abort, ignore this command\n";
+        std::cout << "Transaction T" << trans_id << " already aborted, ignore this command\n";
     }
 
     transid_t parse_trans_id(std::string s) {
@@ -42,6 +42,7 @@ namespace {
                 print_command_error();
                 return -1;
             }
+            return site_id;
         }
         catch (...) {
             print_command_error();
@@ -74,6 +75,28 @@ namespace {
         }
     }
 
+    // this helper function will split multi commands and remove the spaces
+    std::vector<std::string> split_multi_command(std::string line) {
+        std::vector<std::string> res;
+        std::string tmp = "";
+        for (char c : line) {
+            if (c == ';' || c == '\n') {
+                res.push_back(tmp);
+                tmp = "";
+            }
+            else if (c == ' ') {
+                continue;
+            }
+            else {
+                tmp.push_back(c);
+            }
+        }
+        if (tmp.length() > 0) {
+            res.push_back(tmp);
+        }
+        return res;
+    }
+
     // seperate the input string with '(', ',' or ')'
     std::vector<std::string> parse_line(std::string line) {
         std::vector<std::string> parsed;
@@ -81,7 +104,10 @@ namespace {
         std::size_t last = 0;
         std::size_t next = 0;
         while ((next = line.find_first_of("(,)", last)) != line.npos) {
-            parsed.push_back(line.substr(last, next - last));
+            std::string tmp = line.substr(last, next - last);
+            if (tmp.length() > 0) {
+                parsed.push_back(tmp);
+            }
             last = next + 1;
         }
 
@@ -95,7 +121,7 @@ TransMng::TransMng() {
     _next_opid = 0;
 
     // assume that all the sites are up at beginning
-    for (int i = 0; i < SITE_COUNT; ++i) {
+    for (int i = 1; i <= SITE_COUNT; ++i) {
         _site_status[i] = true;
     }
 
@@ -112,11 +138,23 @@ TransMng::TransMng() {
 // ------------------- Main Loop -----------------------------
 
 void
-TransMng::Simulate(std::istream inputs) {
+TransMng::Simulate(std::istream& inputs) {
     std::string line_buffer;
     while (std::getline(inputs, line_buffer)) {
+        std::cout << "Time Tick: " << _now << std::endl;
+        // 1. At the beginning of each timestamp, detect deadlock
+        while (DetectDeadLock()) {}
 
-        ExecuteCommand(line_buffer);
+        // 2. Split the commands read in
+        std::vector<std::string> commands = split_multi_command(line_buffer);
+        for (std::string command : commands) {
+            ExecuteCommand(command);
+        }
+
+        // 3. Try to execute what's left in the queue
+        TryExecuteQueue();
+
+        _now++;
     }
 }
 
@@ -220,7 +258,7 @@ TransMng::ExecuteCommand(std::string line) {
         siteid_t site_id = parse_site_id(parsed_line[1]);
         Fail(site_id);
     }
-    else if (command_type == "Recover") {
+    else if (command_type == "recover") {
         siteid_t site_id = parse_site_id(parsed_line[1]);
         Recover(site_id);
     }
@@ -256,7 +294,7 @@ TransMng::ExecuteCommand(std::string line) {
 void
 TransMng::Fail(siteid_t site_id) {
     if (_site_status[site_id]) {
-        // fail the dm
+        // fail the DM
         DM[site_id]->Fail();
         _site_status[site_id] = false;
 
@@ -313,29 +351,62 @@ TransMng::DetectDeadLock() {
                 std::cout << "Transaction T" << trans_id << " will be aborted. ";
                 std::cout << "Because Site " << site_id << " reports a deadlock.\n";
                 Abort(trans_id);
+                return true;
             }
         }
     }
+    return false;
 }
 
 void
 TransMng::TryExecuteQueue() {
-
+    std::list<op_t> new_queue;
+    while (!_queued_ops.empty()) {
+        op_t op = _queued_ops.front();
+        _queued_ops.pop_front();
+        switch (op.op_type) {
+        case OP_READ: {
+            if (!Read(op)) {
+                new_queue.push_back(op);
+            }
+            break; 
+        }
+        case OP_WRITE: {
+            if (!Write(op)) {
+                new_queue.push_back(op);
+            }
+            break;
+        }
+        case OP_RONLY: {
+            if (!Ronly(op)) {
+                new_queue.push_back(op);
+            }
+            break;
+        }
+        default: {
+            std::cout << "ERROR: Invalid case\n";
+            std::exit(-1);
+        }
+        }
+    }
+    _queued_ops.swap(new_queue);
 }
 
 void
-TransMng::ReceiveReadResponse(op_t op, int value) {
-    std::cout << "Received response for read operation on Transaction T" << op.trans_id
-        << " OP id: " << op.op_id
+TransMng::ReceiveReadResponse(op_t op, siteid_t site_id, int value) {
+    std::cout << "Received from Site " << site_id 
+        << " READ operation result on Transaction T" << op.trans_id
+        << " | OPid: " << op.op_id
         << " | Key = " << op.param.r_param.item_id
         << " | Value = " << value
         << std::endl;
 }
 
 void
-TransMng::ReceiveWriteResponse(op_t op) {
-    std::cout << "Received response for write operation on Transaction T" << op.trans_id
-        << " OP id: " << op.op_id
+TransMng::ReceiveWriteResponse(op_t op, siteid_t site_id) {
+    std::cout << "Received from Site " << site_id
+        << " WRITE operation result on Transaction T" << op.trans_id
+        << " | OPid: " << op.op_id
         << " | Key = " << op.param.w_param.item_id
         << " | Value = " << op.param.w_param.value
         << std::endl;
@@ -357,7 +428,7 @@ TransMng::Begin(transid_t trans_id, bool is_ronly) {
     if (_trans_table.count(trans_id)) {
         print_command_error();
     }
-    _trans_table[trans_id] = trans_table_item(trans_id, is_ronly);
+    _trans_table[trans_id] = trans_table_item(_now, is_ronly);
 }
 
 void
