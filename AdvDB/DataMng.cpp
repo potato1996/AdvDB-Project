@@ -27,8 +27,8 @@ namespace {
 
 DataMng::DataMng(siteid_t site_id) {
     // basic stuff
-    _site_id      = site_id;
-    _is_up        = true;
+    _site_id = site_id;
+    _is_up = true;
     _last_up_time = -1;
 
     // initialize the data items
@@ -49,7 +49,7 @@ void
 DataMng::Abort(transid_t trans_id) {
     if (!_trans_table.count(trans_id))return;
     const auto& trans_info = _trans_table[trans_id];
-    
+
     // clean up the locks that now holding
     for (const itemid_t item_id : trans_info.locks_holding) {
         // clean up lock table
@@ -58,6 +58,11 @@ DataMng::Abort(transid_t trans_id) {
         // Ensure that we really hold this lock - i.e. 2pc holds
         if (!lock_item.trans_holding.count(trans_id)) {
             err_inconsist();
+        }
+
+        // Recover content from disk, if modified
+        if (lock_item.lock_type == X) {
+            _memory[item_id].value = _disk[item_id].front().value;
         }
 
         // clean up lock table
@@ -91,13 +96,13 @@ void
 DataMng::Dump() {
     std::cout << "site " << _site_id << " - ";
     for (const auto& p : _disk) {
-        std::cout << "x" << p.first << ": " << p.second.front().value <<", ";
+        std::cout << "x" << p.first << ": " << p.second.front().value << ", ";
     }
     std::cout << std::endl;
 }
 
 void
-DataMng::DumpItem(itemid_t item_id){
+DataMng::DumpItem(itemid_t item_id) {
     std::cout << "site " << _site_id << " - ";
     std::cout << "x" << item_id << ": " << _disk[item_id].front().value << std::endl;
 }
@@ -114,23 +119,23 @@ DataMng::Fail() {
 
 void
 DataMng::Recover(timestamp_t _ts) {
-    _is_up        = true;
+    _is_up = true;
     _last_up_time = _ts;
 
     // we don't allow to read replicated data until we COMMIT a write on it
     for (const auto& p : _disk) {
-        itemid_t  item_id    = p.first;
+        itemid_t  item_id = p.first;
         disk_item latest_val = p.second.front();
-        _memory[item_id]     = mem_item(latest_val.value);
-        _readable[item_id]   = !is_replicated(item_id);
+        _memory[item_id] = mem_item(latest_val.value);
+        _readable[item_id] = !is_replicated(item_id);
     }
 }
 
 bool
 DataMng::Read(op_t op) {
-    itemid_t  item_id  = op.param.r_param.item_id;
+    itemid_t  item_id = op.param.r_param.item_id;
     transid_t trans_id = op.trans_id;
-    
+
     if (!_readable[item_id]) {
         return false;
     }
@@ -170,7 +175,7 @@ DataMng::Read(op_t op) {
 
 bool
 DataMng::Ronly(op_t op, timestamp_t ts) {
-    itemid_t  item_id  = op.param.r_param.item_id;
+    itemid_t  item_id = op.param.r_param.item_id;
     transid_t trans_id = op.trans_id;
 
     // go through the disk, find the latest commit before this ts
@@ -195,9 +200,9 @@ DataMng::Ronly(op_t op, timestamp_t ts) {
 
 void
 DataMng::Write(op_t op) {
-    itemid_t  item_id   = op.param.w_param.item_id;
+    itemid_t  item_id = op.param.w_param.item_id;
     int       write_val = op.param.w_param.value;
-    transid_t trans_id  = op.trans_id;
+    transid_t trans_id = op.trans_id;
 
     // initialize transaction table item, if this is the first time we met it.
     if (!_trans_table.count(trans_id)) {
@@ -232,7 +237,7 @@ DataMng::Write(op_t op) {
 
 void
 DataMng::Commit(transid_t trans_id, timestamp_t commit_time) {
-    auto err_not_safe_commit = [](){
+    auto err_not_safe_commit = []() {
         std::cout << "ERROR: NOT safe to commit\n";
     };
 
@@ -247,14 +252,14 @@ DataMng::Commit(transid_t trans_id, timestamp_t commit_time) {
     // clean up the locks and write everything back to disk
     for (itemid_t item_id : _trans_table[trans_id].locks_holding) {
         lock_table_item &lock_item = _lock_table[item_id];
-        
+
         // Ensure that we really hold this lock - i.e. 2pc holds
         if (!lock_item.trans_holding.count(trans_id)) {
             err_inconsist();
         }
 
         // write values back to disk
-        if(lock_item.lock_type == X){
+        if (lock_item.lock_type == X) {
             int value = _memory[item_id].value;
             _disk[item_id].push_front(disk_item(value, commit_time));
         }
@@ -333,52 +338,54 @@ DataMng::CheckFinish(transid_t trans_id) {
     return _trans_table[trans_id].locks_waiting.empty();
 }
 
+namespace {
+    bool dfs_cycle(transid_t curr, 
+                   transid_t root,
+                   std::unordered_map<transid_t, std::list<transid_t>>& graph,
+                   std::unordered_set<transid_t>& mark_global) {
+        mark_global.insert(curr);
+        for (transid_t child : graph[curr]) {
+            if (child == root) {
+                return true;
+            }
+            if (!mark_global.count(child)) {
+                dfs_cycle(child, root, graph, mark_global);
+            }
+        }
+        return false;
+    }
+}
+
 transid_t
 DataMng::DetectDeadLock() {
-    std::queue<trasid_t> currentZeroIn;
-    std::unordered_map<transid_t, int> indegree;
-    for (auto p: _trans_table) {
-        indegree[p.first] = 0;
-    }
-    for (auto p : _trans_table) {
-        transid_t  trans_id = p.first;
-        for (itemid_t item_id : trans_table[trans_id].locks_waiting) {
-            for (transid_t next_id : _lock_table[item_id].trans_holding) {
-                if (next_id != trans_id) {
-                    indegree[next_id] ++;
+    // 1. build graph
+    std::unordered_map<transid_t, std::list<transid_t>> graph;
+    for (const auto& p : _trans_table) {
+        transid_t trans_parent = p.first;
+        for (itemid_t item_id : _trans_table[trans_parent].locks_waiting) {
+            for (transid_t trans_child : _trans_table[item_id].locks_holding) {
+                if (trans_child != trans_parent) {
+                    graph[trans_parent].push_back(trans_child);
                 }
             }
         }
     }
-    for (auto p : indegree) {
-        if (p.second == 0)
-            currentZeroIn.push(p.first);
-    }
-    while (!currentZeroIn.isEmpty()) {
-        transid_t id = currentZeroIn.front();
-        currentZeroIn.pop();
-        for (itemid_t item_id : trans_table[id].locks_waiting) {
-            for (transid_t next_id : _lock_table[item_id].trans_holding) {
-                if (--indegree[next_id] == 0) {
-                    currentZeroIn.push(next_id);
-                }
-            }
-        }
-    }
+
     int oldest = -1;
     int oldest_transid = -1;
-    for (auto p : indegree) {
-        if (p.second != 0) {
-            if (oldest < _trans_table[p.first].start_ts) {
-                oldest = _trans_table[p.first].start_ts;
-                oldest_transid = p.first;
-            }
+    for (const auto &p : _trans_table) {
+        std::unordered_set<transid_t> mark_global;
+        if (oldest < _trans_table[p.first].start_ts &&
+            dfs_cycle(p.first, p.first, graph, mark_global)) {
+
+            oldest = _trans_table[p.first].start_ts;
+            oldest_transid = p.first;
         }
     }
     return oldest_transid;
 }
 
-bool 
+bool
 DataMng::check_conflict(itemid_t item_id, transid_t trans_id, op_type_t op_type) {
     const lock_table_item& lock_item = _lock_table[item_id];
 
@@ -414,4 +421,3 @@ DataMng::check_conflict(itemid_t item_id, transid_t trans_id, op_type_t op_type)
     }
     return false;
 }
-

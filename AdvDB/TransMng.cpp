@@ -36,9 +36,9 @@ namespace {
     }
 
     siteid_t parse_site_id(std::string s) {
-        try{
+        try {
             int site_id = std::stoi(s);
-            if(site_id < 1 || site_id > SITE_COUNT){
+            if (site_id < 1 || site_id > SITE_COUNT) {
                 print_command_error();
                 return -1;
             }
@@ -49,10 +49,10 @@ namespace {
         }
     }
 
-    itemid_t parse_item_id(std::string s){
+    itemid_t parse_item_id(std::string s) {
         try {
             int item_id = std::stoi(s.substr(1));
-            if(item_id < 1 || item_id > ITEM_COUNT){
+            if (item_id < 1 || item_id > ITEM_COUNT) {
                 print_command_error();
                 return -1;
             }
@@ -64,8 +64,8 @@ namespace {
         }
     }
 
-    int parse_value(std::string s){
-        try{
+    int parse_value(std::string s) {
+        try {
             return std::stoi(s);
         }
         catch (...) {
@@ -77,36 +77,36 @@ namespace {
     // seperate the input string with '(', ',' or ')'
     std::vector<std::string> parse_line(std::string line) {
         std::vector<std::string> parsed;
-        
-        std::size_t last = 0; 
-        std::size_t next = 0; 
-        while ((next = line.find_first_of("(,)", last)) != line.npos) { 
-            parsed.push_back(line.substr(last, next - last)); 
-            last = next + 1; 
+
+        std::size_t last = 0;
+        std::size_t next = 0;
+        while ((next = line.find_first_of("(,)", last)) != line.npos) {
+            parsed.push_back(line.substr(last, next - last));
+            last = next + 1;
         }
-      
+
         return parsed;
     }
-} 
+}
 
 
 TransMng::TransMng() {
-    _now       = 0;
+    _now = 0;
     _next_opid = 0;
-    
+
     // assume that all the sites are up at beginning
-    for(int i = 0; i < SITE_COUNT; ++i){
+    for (int i = 0; i < SITE_COUNT; ++i) {
         _site_status[i] = true;
     }
 
     // initialize item-site mappings
-    for(siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++){
-        for(itemid_t item_id = 1;  item_id <= ITEM_COUNT; item_id++){
-            if((item_id % 2 == 0) || (1 + (item_id % 10) == site_id)){
+    for (siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++) {
+        for (itemid_t item_id = 1; item_id <= ITEM_COUNT; item_id++) {
+            if ((item_id % 2 == 0) || (1 + (item_id % 10) == site_id)) {
                 _item_sites[item_id].push_back(site_id);
             }
         }
-    }  
+    }
 }
 
 // ------------------- Main Loop -----------------------------
@@ -120,8 +120,8 @@ TransMng::Simulate(std::istream inputs) {
     }
 }
 
-void 
-TransMng::ExecuteCommand(std::string line){
+void
+TransMng::ExecuteCommand(std::string line) {
     auto parsed_line = parse_line(line);
 
     if (parsed_line.size() == 0) {
@@ -147,8 +147,8 @@ TransMng::ExecuteCommand(std::string line){
     else if (command_type == "W") {
         // W(Tn, xn, v)
         transid_t trans_id = parse_trans_id(parsed_line[1]);
-        itemid_t  item_id  = parse_item_id(parsed_line[2]);
-        int       value    = parse_value(parsed_line[3]);
+        itemid_t  item_id = parse_item_id(parsed_line[2]);
+        int       value = parse_value(parsed_line[3]);
         // 1. if this transaction is invalid, report error
         if (!_trans_table.count(trans_id)) {
             print_command_error();
@@ -171,7 +171,7 @@ TransMng::ExecuteCommand(std::string line){
         _next_opid++;
 
         // 5. Try to execute it
-        if(!Write(write_op)){
+        if (!Write(write_op)) {
             // if not successfule, queue it
             _queued_ops.push_back(write_op);
         }
@@ -179,7 +179,7 @@ TransMng::ExecuteCommand(std::string line){
     else if (command_type == "R") {
         // R(Tn, xn)
         transid_t trans_id = parse_trans_id(parsed_line[1]);
-        itemid_t  item_id  = parse_item_id(parsed_line[2]);
+        itemid_t  item_id = parse_item_id(parsed_line[2]);
         // 1. if this transaction is invalid, report error
         if (!_trans_table.count(trans_id)) {
             print_command_error();
@@ -201,51 +201,51 @@ TransMng::ExecuteCommand(std::string line){
             op_t read_op(_next_opid, trans_id, OP_RONLY, read_param);
             _next_opid++;
             // 5. Try to execute it
-            if(!Ronly(read_op)){
+            if (!Ronly(read_op)) {
                 // if not sucessful, queue it
                 _queued_ops.push_back(read_op);
             }
         }
-        else{
+        else {
             op_t read_op(_next_opid, trans_id, OP_READ, read_param);
             _next_opid++;
             // 5. Try to execute it
-            if(!Read(read_op)){
+            if (!Read(read_op)) {
                 // if not successful, queue it
                 _queued_ops.push_back(read_op);
             }
         }
     }
-    else if (command_type == "fail"){
+    else if (command_type == "fail") {
         siteid_t site_id = parse_site_id(parsed_line[1]);
         Fail(site_id);
     }
-    else if(command_type == "Recover"){
+    else if (command_type == "Recover") {
         siteid_t site_id = parse_site_id(parsed_line[1]);
         Recover(site_id);
     }
-    else if(command_type == "dump"){
-        if(parsed_line.size() == 1){
+    else if (command_type == "dump") {
+        if (parsed_line.size() == 1) {
             // dump()
             DumpAll();
         }
-        else if(parsed_line.size() == 2){
-            if(parsed_line[1][0] == 'x'){
+        else if (parsed_line.size() == 2) {
+            if (parsed_line[1][0] == 'x') {
                 // dump(xi)
                 itemid_t item_id = parse_item_id(parsed_line[1]);
                 DumpItem(item_id);
             }
-            else{
+            else {
                 // dump(s)
                 siteid_t site_id = parse_site_id(parsed_line[1]);
                 DumpSite(site_id);
             }
         }
-        else{
+        else {
             print_command_error();
         }
     }
-    else{
+    else {
         print_command_error();
     }
 }
@@ -253,64 +253,65 @@ TransMng::ExecuteCommand(std::string line){
 
 // -------------------- Tester Cause Events -----------------------
 
-void 
-TransMng::Fail(siteid_t site_id){
-    if(_site_status[site_id]){
+void
+TransMng::Fail(siteid_t site_id) {
+    if (_site_status[site_id]) {
         // fail the dm
         DM[site_id]->Fail();
         _site_status[site_id] = false;
 
         // Abort the 2pc transactions that accessed this site so far
-        for(auto &p: _trans_table){
-            if((!p.second.is_ronly)
-               && (!p.second.will_abort)
-               && (p.second.visited_sites.count(site_id))){
-                std::cout << "Transaction T" << p.first 
+        for (auto &p : _trans_table) {
+            if ((!p.second.is_ronly)
+                && (!p.second.will_abort)
+                && (p.second.visited_sites.count(site_id))) {
+                std::cout << "Transaction T" << p.first
                     << " aborted, because it has accessed Site " << site_id
                     << " and this site failed\n";
                 Abort(p.first);
             }
         }
     }
-    else{
+    else {
         std::cout << "Site " << site_id << " is not up yet\n";
     }
 }
 
 void
-TransMng::Recover(siteid_t site_id){
+TransMng::Recover(siteid_t site_id) {
     DM[site_id]->Recover(_now);
     _site_status[site_id] = true;
 }
 
-void 
-TransMng::DumpAll(){
-    for(siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++){
+void
+TransMng::DumpAll() {
+    for (siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++) {
         DumpSite(site_id);
     }
 }
 
-void 
-TransMng::DumpSite(siteid_t site_id){
+void
+TransMng::DumpSite(siteid_t site_id) {
     DM[site_id]->Dump();
 }
 
 void
-TransMng::DumpItem(itemid_t item_id){
-    for(siteid_t site_id: _item_sites[item_id]){
+TransMng::DumpItem(itemid_t item_id) {
+    for (siteid_t site_id : _item_sites[item_id]) {
         DM[site_id]->DumpItem(item_id);
     }
 }
 
 // -------------------- Transaction Execution Events -------------------------
 
-bool 
-TransMng::DetectDeadLock(){
-    for(siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++){
-        if(_site_status[site_id]){
-            if((transid_t trans_id = DM[site_id]->DetectDeadLock()) != -1){
-                std::cout << "Transaction T" << trans_id << " will be aborted. "
-                std::cout << "Because Site " << site_id << " reports a deadlock.\n"
+bool
+TransMng::DetectDeadLock() {
+    for (siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++) {
+        if (_site_status[site_id]) {
+            transid_t trans_id = DM[site_id]->DetectDeadLock();
+            if (trans_id != -1) {
+                std::cout << "Transaction T" << trans_id << " will be aborted. ";
+                std::cout << "Because Site " << site_id << " reports a deadlock.\n";
                 Abort(trans_id);
             }
         }
@@ -318,8 +319,8 @@ TransMng::DetectDeadLock(){
 }
 
 void
-TransMng::TryExecuteQueue(){
-    
+TransMng::TryExecuteQueue() {
+
 }
 
 void
@@ -360,27 +361,27 @@ TransMng::Begin(transid_t trans_id, bool is_ronly) {
 }
 
 void
-TransMng::Finish(transid_t trans_id){
+TransMng::Finish(transid_t trans_id) {
     // The instruction assume that the next command will not arrive if there are pending operations
-    if(_trans_table[trans_id].will_abort){
+    if (_trans_table[trans_id].will_abort) {
         std::cout << "Transaction T" << trans_id << " has already aborted\n";
     }
     else {
-        for(siteid_t site_id: _trans_table[trans_id].visited_sites){
+        for (siteid_t site_id : _trans_table[trans_id].visited_sites) {
             DM[site_id]->Commit(trans_id, _now);
         }
-        std::cout << "Transaction T" << trans_id << " finished succesfully!\n";   
+        std::cout << "Transaction T" << trans_id << " finished succesfully!\n";
     }
     _trans_table.erase(trans_id);
 }
 
 void
-TransMng::Abort(transid_t trans_id){
-    if(_trans_table[trans_id].will_abort){
+TransMng::Abort(transid_t trans_id) {
+    if (_trans_table[trans_id].will_abort) {
         // already aborted, do nothing
     }
-    else{
-        for(siteid_t siteid_t: _trans_table[trans_id].visited_sites){
+    else {
+        for (siteid_t siteid_t : _trans_table[trans_id].visited_sites) {
             DM[siteid_t]->Abort(trans_id);
         }
         _trans_table[trans_id].will_abort = true;
@@ -398,7 +399,7 @@ TransMng::Read(op_t op) {
         }
 
         // let DM execute it
-        if(DM[site_id]->Read(op)) {
+        if (DM[site_id]->Read(op)) {
             _trans_table[op.trans_id].visited_sites.insert(site_id);
             return true;
         }
@@ -410,7 +411,7 @@ TransMng::Read(op_t op) {
 
 bool
 TransMng::Ronly(op_t op) {
-    itemid_t    item_id  = op.param.r_param.item_id;
+    itemid_t    item_id = op.param.r_param.item_id;
     transid_t   trans_id = op.trans_id;
     timestamp_t start_ts = _trans_table[trans_id].start_ts;
     // for a read operation, send it to any of the sites should be fine
@@ -421,7 +422,7 @@ TransMng::Ronly(op_t op) {
         }
 
         // let DM execute it
-        if(DM[site_id]->Ronly(op, start_ts)) {
+        if (DM[site_id]->Ronly(op, start_ts)) {
             return true;
         }
     }
@@ -433,8 +434,8 @@ TransMng::Ronly(op_t op) {
 bool
 TransMng::Write(op_t op) {
     transid_t trans_id = op.trans_id;
-    itemid_t  item_id  = op.param.w_param.item_id;
-    int       value    = op.param.w_param.value;
+    itemid_t  item_id = op.param.w_param.item_id;
+    int       value = op.param.w_param.value;
 
     // 5. broadcase to all the sites
     bool success = false;
@@ -451,5 +452,3 @@ TransMng::Write(op_t op) {
 
     return success;
 }
-
-

@@ -39,13 +39,13 @@ private:
         std::unordered_set<siteid_t> visited_sites;
         trans_table_item() {}
         trans_table_item(timestamp_t ts, bool ronly) {
-            start_ts       = ts;
-            is_ronly       = ronly;
-            will_abort     = false;
+            start_ts = ts;
+            is_ronly = ronly;
+            will_abort = false;
         }
     };
     std::unordered_map<transid_t, trans_table_item> _trans_table;
-    
+
     // Queued Ops and Finished ops - recall that there could be no available sites
     std::list<op_t> _queued_ops;
 

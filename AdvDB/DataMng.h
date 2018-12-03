@@ -13,7 +13,7 @@ public:
 
     // Follow the data initialization rules for the given site_id
     DataMng(siteid_t site_id);
-    
+
     //--------------------tester cause events----------------------
     // Fail this site
     void Fail();
@@ -53,15 +53,15 @@ public:
 
     // Detect deadlock, return -1 if there's really no deadlocks
     transid_t DetectDeadLock();
-    
+
 private:
     //------------- Storage goes here ----------------------------
     // For temporal storage(memory), it seems do not need a timestamp version
-    struct mem_item{
+    struct mem_item {
         int value;
         mem_item() {}
         mem_item(int _value) {
-            value       = _value;
+            value = _value;
         }
     };
     std::unordered_map<itemid_t, mem_item> _memory;
