@@ -1,7 +1,6 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 2.8)
 project(AdvDB)
 
 set(CMAKE_CXX_STANDARD 11)
 
-set(SOURCE_FILES DataMng.cpp TransMng.cpp main.cpp)
-add_executable(AdvDB ${SOURCE_FILES})
+add_executable(repcrec TransMng.cpp DataMng.cpp main.cpp)
