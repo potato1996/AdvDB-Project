@@ -313,7 +313,10 @@ DataMng::try_execute() {
                     itemid_t  next_item_id = next_op.param.w_param.item_id;
                     int       write_val = next_op.param.w_param.value;
                     transid_t next_trans_id = next_op.trans_id;
-                    if (check_conflict(next_item_id, next_trans_id, OP_WRITE)) {
+                    if ((lock_item.lock_type == S && 
+                         lock_item.trans_holding.size() == 1 && 
+                         lock_item.trans_holding.count(next_trans_id)) ||
+                        (check_conflict(next_item_id, next_trans_id, OP_WRITE))) {
                         // now we should be able to execute this op
                         _trans_table[next_trans_id].locks_waiting.erase(item_id);
                         lock_item.queued_ops.pop_front();
@@ -338,55 +341,38 @@ DataMng::CheckFinish(transid_t trans_id) {
     return _trans_table[trans_id].locks_waiting.empty();
 }
 
-namespace {
-    // dfs-based cycle detector
-    bool dfs_cycle(transid_t curr, 
-                   transid_t root,
-                   std::unordered_map<transid_t, std::list<transid_t>>& graph,
-                   std::unordered_set<transid_t>& mark_global) {
-        mark_global.insert(curr);
-        for (transid_t child : graph[curr]) {
-            if (child == root) {
-                return true;
-            }
-            if (!mark_global.count(child)) {
-                if (dfs_cycle(child, root, graph, mark_global)) {
-                    return true;
-                }
+
+std::unordered_map<siteid_t, std::unordered_set<siteid_t>>
+DataMng::GetWaitingGraph() {
+    std::unordered_map<siteid_t, std::unordered_set<siteid_t>> graph;
+
+    // now go through the locks table
+    for (auto &p : _lock_table) {
+        lock_table_item& lock_item = p.second;
+        if (lock_item.lock_type == NONE || lock_item.queued_ops.size() == 0) {
+            continue;
+        }
+        // 1. the first op in the queue is waiting for the locks holding
+        for (itemid_t child : lock_item.trans_holding) {
+            itemid_t parent = lock_item.queued_ops.front().trans_id;
+            if (parent != child) {
+                graph[parent].insert(child);
             }
         }
-        return false;
-    }
-}
 
-transid_t
-DataMng::DetectDeadLock() {
-    // 1. build graph
-    std::unordered_map<transid_t, std::list<transid_t>> graph;
-    for (const auto& p : _trans_table) {
-        transid_t trans_parent = p.first;
-        for (itemid_t item_id : _trans_table[trans_parent].locks_waiting) {
-            for (transid_t trans_child : _trans_table[item_id].locks_holding) {
-                if (trans_child != trans_parent) {
-                    graph[trans_parent].push_back(trans_child);
-                }
+        // 2. all the ops in the queue are waiting for the previous one
+        auto it_prev = lock_item.queued_ops.begin();
+        auto it_next = it_prev;
+        for (it_next++; it_next != lock_item.queued_ops.end(); it_prev++, it_next++) {
+            itemid_t parent = it_next->trans_id;
+            itemid_t child = it_prev->trans_id;
+            if (parent != child) {
+                graph[parent].insert(child);
             }
         }
     }
 
-    // 2. find the oldest transaction that in a cycle
-    int oldest = -1;
-    int oldest_transid = -1;
-    for (const auto &p : _trans_table) {
-        std::unordered_set<transid_t> mark_global;
-        if (oldest < _trans_table[p.first].start_ts &&
-            dfs_cycle(p.first, p.first, graph, mark_global)) {
-
-            oldest = _trans_table[p.first].start_ts;
-            oldest_transid = p.first;
-        }
-    }
-    return oldest_transid;
+    return graph;
 }
 
 bool
@@ -414,7 +400,8 @@ DataMng::check_conflict(itemid_t item_id, transid_t trans_id, op_type_t op_type)
         case S:
             // check if we could safely upgrade the lock
             if ((lock_item.trans_holding.size() == 1) &&
-                (lock_item.trans_holding.count(trans_id))) return true;
+                (lock_item.trans_holding.count(trans_id)) &&
+                (lock_item.queued_ops.size() == 0)) return true;
             else                                           return false;
         case X:
             if (lock_item.trans_holding.count(trans_id))   return true;

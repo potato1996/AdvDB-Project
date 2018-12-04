@@ -342,22 +342,6 @@ TransMng::DumpItem(itemid_t item_id) {
 
 // -------------------- Transaction Execution Events -------------------------
 
-bool
-TransMng::DetectDeadLock() {
-    for (siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++) {
-        if (_site_status[site_id]) {
-            transid_t trans_id = DM[site_id]->DetectDeadLock();
-            if (trans_id != -1) {
-                std::cout << "Transaction T" << trans_id << " will be aborted. ";
-                std::cout << "Because Site " << site_id << " reports a deadlock.\n";
-                Abort(trans_id);
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 void
 TransMng::TryExecuteQueue() {
     std::list<op_t> new_queue;
@@ -522,4 +506,66 @@ TransMng::Write(op_t op) {
     }
 
     return success;
+}
+
+
+namespace {
+    // dfs-based cycle detector
+    bool dfs_cycle(transid_t curr,
+        transid_t root,
+        std::unordered_map<transid_t, std::unordered_set<transid_t>>& graph,
+        std::unordered_set<transid_t>& mark_global) {
+        mark_global.insert(curr);
+        for (transid_t child : graph[curr]) {
+            if (child == root) {
+                return true;
+            }
+            if (!mark_global.count(child)) {
+                if (dfs_cycle(child, root, graph, mark_global)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+}
+
+bool
+TransMng::DetectDeadLock() {
+    
+    // 1. get all the locks waiting graphs from the DMs
+    std::unordered_map<siteid_t, std::unordered_set<siteid_t>> waiting_graph;
+    for (siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++) {
+        if (_site_status[site_id]) {
+            
+            // get the waiting graph from each site
+            auto site_waiting_graph = DM[site_id]->GetWaitingGraph();
+           
+            // now merge the graphs
+            for (auto &p : site_waiting_graph) {
+                waiting_graph[p.first].insert(p.second.begin(), p.second.end());
+            }
+        }
+    }
+
+    // 2. find the oldest transaction that in a cycle
+    int oldest = -1;
+    siteid_t oldest_transid = -1;
+    for (const auto &p : waiting_graph) {
+        std::unordered_set<transid_t> mark_global;
+        if (oldest < _trans_table[p.first].start_ts &&
+            dfs_cycle(p.first, p.first, waiting_graph, mark_global)) {
+
+            oldest = _trans_table[p.first].start_ts;
+            oldest_transid = p.first;
+        }
+    }
+
+    if (oldest_transid != -1) {
+        std::cout << "Transaction T" << oldest_transid << " aborted because of deadlock\n";
+        Abort(oldest_transid);
+        return true;
+    }
+
+    return false;
 }

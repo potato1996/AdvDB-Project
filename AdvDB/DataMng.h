@@ -51,8 +51,9 @@ public:
     // Commit a transaction (the caller should ensure that it is safe to commit)
     void Commit(transid_t trans_id, timestamp_t commit_time);
 
-    // Detect deadlock, return -1 if there's really no deadlocks
-    transid_t DetectDeadLock();
+    // This is used by TM to retrive waiting graph from the DMs.
+    // Which will be ultimately used for deadlock detection
+    std::unordered_map<siteid_t, std::unordered_set<siteid_t>> GetWaitingGraph();
 
 private:
     //------------- Storage goes here ----------------------------

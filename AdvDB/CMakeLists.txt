@@ -3,7 +3,5 @@ project(AdvDB)
 
 set(CMAKE_CXX_STANDARD 11)
 
-add_executable(AdvDB
-        Common.h
-        DataMng.h
-        TransMng.h)
+set(SOURCE_FILES DataMng.cpp TransMng.cpp main.cpp)
+add_executable(AdvDB ${SOURCE_FILES})
