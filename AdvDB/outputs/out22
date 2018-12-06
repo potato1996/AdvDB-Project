@@ -1,0 +1,35 @@
+------------------- Time Tick: 0 -------------------------
+------------------- Time Tick: 1 -------------------------
+------------------- Time Tick: 2 -------------------------
+Received from Site 4 READ operation result on Transaction T1 | OPid: 0 | Key = 3 | Value = 30
+------------------- Time Tick: 3 -------------------------
+Received from Site 1 WRITE operation result on Transaction T2 | OPid: 1 | Key = 8 | Value = 88
+Received from Site 2 WRITE operation result on Transaction T2 | OPid: 1 | Key = 8 | Value = 88
+Received from Site 3 WRITE operation result on Transaction T2 | OPid: 1 | Key = 8 | Value = 88
+Received from Site 4 WRITE operation result on Transaction T2 | OPid: 1 | Key = 8 | Value = 88
+Received from Site 5 WRITE operation result on Transaction T2 | OPid: 1 | Key = 8 | Value = 88
+Received from Site 6 WRITE operation result on Transaction T2 | OPid: 1 | Key = 8 | Value = 88
+Received from Site 7 WRITE operation result on Transaction T2 | OPid: 1 | Key = 8 | Value = 88
+Received from Site 8 WRITE operation result on Transaction T2 | OPid: 1 | Key = 8 | Value = 88
+Received from Site 9 WRITE operation result on Transaction T2 | OPid: 1 | Key = 8 | Value = 88
+Received from Site 10 WRITE operation result on Transaction T2 | OPid: 1 | Key = 8 | Value = 88
+------------------- Time Tick: 4 -------------------------
+Transaction T2 aborted, because it has accessed Site 2 and this site failed
+------------------- Time Tick: 5 -------------------------
+Transaction T2 already aborted, ignore this command
+------------------- Time Tick: 6 -------------------------
+Received from Site 1 WRITE operation result on Transaction T1 | OPid: 2 | Key = 4 | Value = 91
+Received from Site 3 WRITE operation result on Transaction T1 | OPid: 2 | Key = 4 | Value = 91
+Received from Site 4 WRITE operation result on Transaction T1 | OPid: 2 | Key = 4 | Value = 91
+Received from Site 5 WRITE operation result on Transaction T1 | OPid: 2 | Key = 4 | Value = 91
+Received from Site 6 WRITE operation result on Transaction T1 | OPid: 2 | Key = 4 | Value = 91
+Received from Site 7 WRITE operation result on Transaction T1 | OPid: 2 | Key = 4 | Value = 91
+Received from Site 8 WRITE operation result on Transaction T1 | OPid: 2 | Key = 4 | Value = 91
+Received from Site 9 WRITE operation result on Transaction T1 | OPid: 2 | Key = 4 | Value = 91
+Received from Site 10 WRITE operation result on Transaction T1 | OPid: 2 | Key = 4 | Value = 91
+------------------- Time Tick: 7 -------------------------
+------------------- Time Tick: 8 -------------------------
+Transaction T2 has already aborted
+------------------- Time Tick: 9 -------------------------
+Transaction T1 finished succesfully!
+------------------- Time Tick: 10 -------------------------

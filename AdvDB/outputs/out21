@@ -1,0 +1,7 @@
+------------------- Time Tick: 0 -------------------------
+------------------- Time Tick: 1 -------------------------
+------------------- Time Tick: 2 -------------------------
+Received from Site 1 READ operation result on Transaction T2 | OPid: 0 | Key = 2 | Value = 20
+------------------- Time Tick: 3 -------------------------
+------------------- Time Tick: 4 -------------------------
+ERROR: Invalid Command
