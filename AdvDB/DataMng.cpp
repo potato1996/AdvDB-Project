@@ -1,5 +1,6 @@
 #include "DataMng.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <queue>
@@ -47,49 +48,37 @@ DataMng::DataMng(siteid_t site_id) {
 
 void
 DataMng::Abort(transid_t trans_id) {
-    if (!_trans_table.count(trans_id))return;
     const auto& trans_info = _trans_table[trans_id];
 
-    // clean up the locks that now holding
-    for (const itemid_t item_id : trans_info.locks_holding) {
-        // clean up lock table
-        lock_table_item &lock_item = _lock_table[item_id];
+    // clean up the locks
+    for (auto &p : _lock_table) {
+        lock_table_item_t &lock_item = p.second;
+        if (lock_item.trans_holding.count(trans_id)) {
+            // clean up the lock table
+            lock_item.trans_holding.erase(trans_id);
 
-        // Ensure that we really hold this lock - i.e. 2pc holds
-        if (!lock_item.trans_holding.count(trans_id)) {
-            err_inconsist();
-        }
+            // clean up the lock queue
+            lock_item.lock_queue.remove_if([trans_id](const lock_queue_item_t& item) {
+                return item.trans_id == trans_id;
+            });
 
-        // Recover content from disk, if modified
-        if (lock_item.lock_type == X) {
-            _memory[item_id].value = _disk[item_id].front().value;
-        }
-
-        // clean up lock table
-        lock_item.trans_holding.erase(trans_id);
-
-        // free up the lock
-        if (lock_item.trans_holding.empty()) {
-            lock_item.lock_type = NONE;
+            // free up the lock
+            if (lock_item.trans_holding.empty()) {
+                lock_item.lock_type = NONE;
+            }
         }
     }
 
-    // clean up the ops that now waiting
-    for (const itemid_t item_id : trans_info.locks_waiting) {
-        // clean up lock table
-        lock_table_item &lock_item = _lock_table[item_id];
-
-        // remove all the commands by trans_id
-        lock_item.queued_ops.remove_if([trans_id](const op_t& op) {
-            return op.trans_id == trans_id;
-        });
+    // recover the modifed data
+    for (itemid_t item_id : _trans_table[trans_id].modified_item) {
+        _memory[item_id].value = _disk[item_id].front().value;
     }
 
     // clean up trans table
     _trans_table.erase(trans_id);
 
     // now we freed up some locks, hopefully we can execute some commands
-    try_execute();
+    try_resolve_lock_table();
 }
 
 void
@@ -131,6 +120,43 @@ DataMng::Recover(timestamp_t _ts) {
     }
 }
 
+
+bool 
+DataMng::GetReadLock(transid_t trans_id, itemid_t item_id) {
+
+    if (!_readable[item_id]) {
+        return false;
+    }
+
+    lock_queue_item_t new_queue_item(trans_id, S);
+    lock_table_item_t& lock_item = _lock_table[item_id];
+
+    if (check_already_hold(item_id, new_queue_item) ||
+        (check_holding_conflict(item_id, new_queue_item) &&
+        check_queued_conflict(item_id, new_queue_item))) {
+        // update the lock table
+        if (lock_item.lock_type == NONE) {
+            lock_item.lock_type = S;
+        }
+        lock_item.trans_holding.insert(trans_id);
+
+        // grant lock
+        return true;
+    }
+    else {
+        // append this operation to the end of the lock queue
+        if (!lock_item.check_exist(new_queue_item)) {
+            lock_item.lock_queue.push_back(new_queue_item);
+        }
+
+        // update the transaction table
+        // _trans_table[trans_id].locks_waiting.insert(item_id);
+        return false;
+    }
+    err_invalid_case();
+    return false;
+}
+
 bool
 DataMng::Read(op_t op) {
     itemid_t  item_id = op.param.r_param.item_id;
@@ -140,37 +166,19 @@ DataMng::Read(op_t op) {
         return false;
     }
 
-    // initialize transaction table item, if this is the first time we met it.
-    if (!_trans_table.count(trans_id)) {
-        _trans_table[trans_id] = trans_table_item(TM->QueryTransStartTime(trans_id));
-    }
-
-    if (check_conflict(item_id, trans_id, OP_READ)) {
-        // update the lock table
-        lock_table_item& lock_item = _lock_table[item_id];
-        if (lock_item.lock_type == NONE) {
-            lock_item.lock_type = S;
-        }
-        lock_item.trans_holding.insert(trans_id);
-
-        // update the transaction table
-        _trans_table[trans_id].locks_holding.insert(item_id);
-
+    if (_lock_table[item_id].trans_holding.count(trans_id)) {
         // execute the operation
         int value = _memory[item_id].value;
 
         // send the result back to TM
         TM->ReceiveReadResponse(op, _site_id, value);
+        return true;
     }
     else {
-        // append this operation to the end of the lock queue
-        _lock_table[item_id].queued_ops.push_back(op);
-
-        // update the transaction table
-        _trans_table[trans_id].locks_waiting.insert(item_id);
+        std::cout << "ERROR: Unsafe to read\n";
     }
 
-    return true;
+    return false;
 }
 
 bool
@@ -198,79 +206,99 @@ DataMng::Ronly(op_t op, timestamp_t ts) {
     return false;
 }
 
-void
-DataMng::Write(op_t op) {
-    itemid_t  item_id = op.param.w_param.item_id;
-    int       write_val = op.param.w_param.value;
-    transid_t trans_id = op.trans_id;
+bool 
+DataMng::GetWriteLock(transid_t trans_id, itemid_t item_id) {
 
-    // initialize transaction table item, if this is the first time we met it.
-    if (!_trans_table.count(trans_id)) {
-        _trans_table[trans_id] = trans_table_item(TM->QueryTransStartTime(trans_id));
-    }
+    lock_queue_item_t new_queue_item(trans_id, X);
+    lock_table_item_t& lock_item = _lock_table[item_id];
 
-    if (check_conflict(item_id, trans_id, OP_WRITE)) {
+    if (check_already_hold(item_id, new_queue_item) ||
+        (check_holding_conflict(item_id, new_queue_item) &&
+        check_queued_conflict(item_id, new_queue_item))) {
+
         // upgrade the lock type
-        lock_table_item& lock_item = _lock_table[item_id];
         if (lock_item.lock_type == S || lock_item.lock_type == NONE) {
             lock_item.lock_type = X;
         }
         lock_item.trans_holding.insert(trans_id);
 
         // update the transaction table
-        _trans_table[trans_id].locks_holding.insert(item_id);
+        // _trans_table[trans_id].locks_holding.insert(item_id);
+
+        // Grant lock to TM
+        return true;
+    }
+    else {
+
+        // append this operation to the end of the lock queue
+        if (!lock_item.check_exist(new_queue_item)) {
+            lock_item.lock_queue.push_back(new_queue_item);
+        }
+
+        // update the transaction table
+        // _trans_table[trans_id].locks_waiting.insert(item_id);
+
+        return false;
+    }
+    err_inconsist();
+    return false;
+}
+
+void
+DataMng::Write(op_t op) {
+    itemid_t  item_id = op.param.w_param.item_id;
+    int       write_val = op.param.w_param.value;
+    transid_t trans_id = op.trans_id;
+
+    if (check_already_hold(item_id, lock_queue_item_t(trans_id, X))) {
+
+        // update the transaction table
+        _trans_table[trans_id].modified_item.insert(item_id);
 
         // execute the operation
         _memory[item_id].value = write_val;
 
-        // Report to TM that we have finished a write
         TM->ReceiveWriteResponse(op, _site_id);
     }
     else {
-        // append this operation to the end of the lock queue
-        _lock_table[item_id].queued_ops.push_back(op);
-
-        // update the transaction table
-        _trans_table[trans_id].locks_waiting.insert(item_id);
+        std::cout << "ERROR: Unsafe to write\n";
     }
 }
 
 void
 DataMng::Commit(transid_t trans_id, timestamp_t commit_time) {
     auto err_not_safe_commit = []() {
-        std::cout << "ERROR: NOT safe to commit\n";
+        std::cout << "Debug Info: Items in lock queue at commit time\n";
     };
 
-    if (!_trans_table.count(trans_id)) {
-        return;
+    // clean up the locks
+    for (auto &p : _lock_table) {
+        lock_table_item_t &lock_item = p.second;
+        if (lock_item.trans_holding.count(trans_id)) {
+            // clean up the lock table
+            lock_item.trans_holding.erase(trans_id);
+
+            // clean up the lock queue
+            size_t ori_size = lock_item.lock_queue.size();
+            lock_item.lock_queue.remove_if([trans_id](const lock_queue_item_t& item) {
+                return item.trans_id == trans_id;
+            });
+            size_t new_size = lock_item.lock_queue.size();
+            if (ori_size != new_size) {
+                err_not_safe_commit();
+            }
+
+            // free up the lock
+            if (lock_item.trans_holding.empty()) {
+                lock_item.lock_type = NONE;
+            }
+        }
     }
 
-    if (!CheckFinish(trans_id)) {
-        err_not_safe_commit();
-    }
-
-    // clean up the locks and write everything back to disk
-    for (itemid_t item_id : _trans_table[trans_id].locks_holding) {
-        lock_table_item &lock_item = _lock_table[item_id];
-
-        // Ensure that we really hold this lock - i.e. 2pc holds
-        if (!lock_item.trans_holding.count(trans_id)) {
-            err_inconsist();
-        }
-
-        // write values back to disk
-        if (lock_item.lock_type == X) {
-            int value = _memory[item_id].value;
-            _disk[item_id].push_front(disk_item(value, commit_time));
-        }
-
-        // clean up lock table
-        lock_item.trans_holding.erase(trans_id);
-
-        // free up the lock
-        if (lock_item.trans_holding.empty()) {
-            lock_item.lock_type = NONE;
-        }
+    // write everything changed back to disk
+    for (itemid_t item_id : _trans_table[trans_id].modified_item) {
+        int value = _memory[item_id].value;
+        _disk[item_id].push_front(disk_item(value, commit_time));
 
         // now we allow to read this value
         _readable[item_id] = true;
@@ -280,47 +308,50 @@ DataMng::Commit(transid_t trans_id, timestamp_t commit_time) {
     _trans_table.erase(trans_id);
 
     // now, since we have committed a transaction, hopefully we can finish some queued operations
-    try_execute();
+    try_resolve_lock_table();
 }
 
 void
-DataMng::try_execute() {
+DataMng::try_resolve_lock_table() {
     bool flag = true;
     while (flag) {
         flag = false;
         for (auto &p : _lock_table) {
-            itemid_t        item_id = p.first;
-            lock_table_item &lock_item = p.second;
-            if (!lock_item.queued_ops.empty()) {
+            itemid_t          item_id = p.first;
+            lock_table_item_t &lock_item = p.second;
+            if (!lock_item.lock_queue.empty()) {
                 // we peek at the next operation, and check if we are safe to execute it
-                op_t next_op = lock_item.queued_ops.front();
+                auto next_item = lock_item.lock_queue.front();
 
-                switch (next_op.op_type) {
-                case OP_READ: {
-                    itemid_t  next_item_id = next_op.param.r_param.item_id;
-                    transid_t next_trans_id = next_op.trans_id;
-                    if ((lock_item.lock_type == S) ||
-                        (check_conflict(next_item_id, next_trans_id, OP_READ))) {
-                        // now we should be able to execute this op
-                        _trans_table[next_trans_id].locks_waiting.erase(item_id);
-                        lock_item.queued_ops.pop_front();
-                        Read(next_op);
+                switch (next_item.lock_type) {
+                case S: {
+                    transid_t next_trans_id = next_item.trans_id;
+                    if (check_holding_conflict(item_id, next_item)) {
+                        
+                        // now we should be able to remove this lock waiting item
+                        lock_item.lock_queue.pop_front();
+
+                        // also grant the new lock here
+                        if (lock_item.lock_type == NONE) {
+                            lock_item.lock_type = S;
+                        }
+                        lock_item.trans_holding.insert(next_trans_id);
                         flag = true;
                     }
                     break;
                 }
-                case OP_WRITE: {
-                    itemid_t  next_item_id = next_op.param.w_param.item_id;
-                    int       write_val = next_op.param.w_param.value;
-                    transid_t next_trans_id = next_op.trans_id;
-                    if ((lock_item.lock_type == S && 
-                         lock_item.trans_holding.size() == 1 && 
-                         lock_item.trans_holding.count(next_trans_id)) ||
-                        (check_conflict(next_item_id, next_trans_id, OP_WRITE))) {
-                        // now we should be able to execute this op
-                        _trans_table[next_trans_id].locks_waiting.erase(item_id);
-                        lock_item.queued_ops.pop_front();
-                        Write(next_op);
+                case X: {
+                    transid_t next_trans_id = next_item.trans_id;
+                    if (check_holding_conflict(item_id, next_item)) {
+                        
+                        // now we should be able to remove this lock waiting item
+                        lock_item.lock_queue.pop_front();
+                        
+                        // also grant the new lock here
+                        if (lock_item.lock_type == S || lock_item.lock_type == NONE) {
+                            lock_item.lock_type = X;
+                        }
+                        lock_item.trans_holding.insert(next_trans_id);
                         flag = true;
                     }
                     break;
@@ -333,14 +364,6 @@ DataMng::try_execute() {
     }
 }
 
-bool
-DataMng::CheckFinish(transid_t trans_id) {
-    if (!_trans_table.count(trans_id)) {
-        return true;
-    }
-    return _trans_table[trans_id].locks_waiting.empty();
-}
-
 
 std::unordered_map<siteid_t, std::unordered_set<siteid_t>>
 DataMng::GetWaitingGraph() {
@@ -348,26 +371,33 @@ DataMng::GetWaitingGraph() {
 
     // now go through the locks table
     for (auto &p : _lock_table) {
-        lock_table_item& lock_item = p.second;
-        if (lock_item.lock_type == NONE || lock_item.queued_ops.size() == 0) {
+        lock_table_item_t& lock_item = p.second;
+        if (lock_item.lock_type == NONE || lock_item.lock_queue.size() == 0) {
             continue;
         }
-        // 1. the first op in the queue is waiting for the locks holding
-        for (itemid_t child : lock_item.trans_holding) {
-            itemid_t parent = lock_item.queued_ops.front().trans_id;
-            if (parent != child) {
-                graph[parent].insert(child);
+
+        // 1. check if each item in the lock_queue is conflict with the now holding one
+        for (lock_queue_item_t parent_item: lock_item.lock_queue) {
+            if (!check_holding_conflict(p.first, parent_item)) {
+                for (itemid_t child : lock_item.trans_holding) {
+                    itemid_t parent = parent_item.trans_id;
+                    if (parent != child) {
+                        graph[parent].insert(child);
+                    }
+                }
             }
         }
 
-        // 2. all the ops in the queue are waiting for the previous one
-        auto it_prev = lock_item.queued_ops.begin();
-        auto it_next = it_prev;
-        for (it_next++; it_next != lock_item.queued_ops.end(); it_prev++, it_next++) {
-            itemid_t parent = it_next->trans_id;
-            itemid_t child = it_prev->trans_id;
-            if (parent != child) {
-                graph[parent].insert(child);
+        // 2. all the ops in the queue are waiting for the previous ones (if conflict)
+        for (auto it_parent = lock_item.lock_queue.begin(); it_parent != lock_item.lock_queue.end(); it_parent++){
+            for (auto it_child = lock_item.lock_queue.begin(); it_child != it_parent; it_child++) {
+                if (check_item_conflict(*it_parent, *it_child)) {
+                    itemid_t parent = it_parent->trans_id;
+                    itemid_t child = it_child->trans_id;
+                    if (parent != child) {
+                        graph[parent].insert(child);
+                    }
+                }
             }
         }
     }
@@ -375,40 +405,76 @@ DataMng::GetWaitingGraph() {
     return graph;
 }
 
-bool
-DataMng::check_conflict(itemid_t item_id, transid_t trans_id, op_type_t op_type) {
-    const lock_table_item& lock_item = _lock_table[item_id];
 
-    // I'm believe that for now the followings are incorrect.....
-    switch (op_type) {
-    case OP_READ: {
-        switch (lock_item.lock_type) {
-        case NONE:                                         return true;
-        case S:
-            if (lock_item.trans_holding.count(trans_id))   return true;
-            else if (lock_item.queued_ops.size() == 0)     return true;
-            else                                           return false;
-        case X:
-            if (lock_item.trans_holding.count(trans_id))   return true;
-            else                                           return false;
-        default: err_invalid_case();
+bool
+DataMng::check_lock_queue() {
+    for (auto &p : _lock_table) {
+        std::unordered_set<transid_t> tmp;
+        for (auto &item : p.second.lock_queue) {
+            if (tmp.count(item.trans_id)) {
+                return false;
+            }
+            tmp.insert(item.trans_id);
         }
     }
-    case OP_WRITE:
-        switch (lock_item.lock_type) {
-        case NONE:                                         return true;
-        case S:
-            // check if we could safely upgrade the lock
-            if ((lock_item.trans_holding.size() == 1) &&
-                (lock_item.trans_holding.count(trans_id)) &&
-                (lock_item.queued_ops.size() == 0)) return true;
-            else                                           return false;
-        case X:
-            if (lock_item.trans_holding.count(trans_id))   return true;
-            else                                           return false;
-        default: err_invalid_case();
-        }
-    default: err_invalid_case();
+    std::cout << "Debug Info: same item occured twice in the same lock queue\n";
+    return false;
+}
+
+bool
+DataMng::check_item_conflict(lock_queue_item_t _lhs, lock_queue_item_t _rhs) {
+    if (_lhs.trans_id == _rhs.trans_id) {
+        return true;
+    }
+    if ((_lhs.lock_type == S) && (_rhs.lock_type == S)) {
+        return true;
     }
     return false;
+}
+
+bool
+DataMng::check_already_hold(itemid_t item_id, lock_queue_item_t _rhs) {
+    const lock_table_item_t& lock_item = _lock_table[item_id];
+    const transid_t trans_id = _rhs.trans_id;
+
+    // first, we must hold it
+    if (!lock_item.trans_holding.count(trans_id)) return false;
+
+    // second, the lock type is match
+    if (_rhs.lock_type == S) return true;
+    else if (lock_item.lock_type == X)return true;
+    else return false;
+}
+
+bool 
+DataMng::check_holding_conflict(itemid_t item_id, lock_queue_item_t _rhs) {
+    const lock_table_item_t& lock_item = _lock_table[item_id];
+    const transid_t trans_id = _rhs.trans_id;
+    switch (lock_item.lock_type) {
+    case NONE:                                          return true;
+    case S: {
+        if (_rhs.lock_type == S)                        return true;
+        else if (lock_item.trans_holding.size() == 1 &&
+            lock_item.trans_holding.count(trans_id))    return true;
+        else                                            return false;
+    }
+    case X: {
+        if (lock_item.trans_holding.count(trans_id))    return true;
+        else                                            return false;
+    }
+    default:
+        err_invalid_case();
+    }
+    return false;
+}
+
+bool
+DataMng::check_queued_conflict(itemid_t item_id, lock_queue_item_t _rhs) {
+    const lock_table_item_t& lock_item = _lock_table[item_id];
+    for (const auto& lock_queue_item : lock_item.lock_queue) {
+        if (!check_item_conflict(_rhs, lock_queue_item)) {
+            return false;
+        }
+    }
+    return true;
 }

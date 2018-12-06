@@ -3,11 +3,12 @@
 #include "Common.h"
 
 #include<iostream>
+#include<fstream>
 
 DataMng* DM[SITE_COUNT + 1];
 TransMng* TM;
 
-int main() {
+int main(int argc, char** argv) {
     // initialize TM
     TM = new TransMng();
 
@@ -18,7 +19,18 @@ int main() {
     }
 
     // begin main loop
-    TM->Simulate(std::cin);
+    if (argc > 1) {
+        std::ifstream infile(argv[1]);
+        if (!infile.is_open()) {
+            std::cout << "ERROR Open Input File\n";
+        }
+        else {
+            TM->Simulate(infile);
+        }
+    }
+    else {
+        TM->Simulate(std::cin);
+    }
 
     // clean up
     delete TM;

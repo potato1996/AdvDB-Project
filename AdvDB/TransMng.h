@@ -16,10 +16,6 @@ public:
     // The response of a write operation
     void ReceiveWriteResponse(op_t op, siteid_t site_id);
 
-    // DMs would use it to get the start time of transactions
-    // Will be used to determine which to abort at cycle detection
-    timestamp_t QueryTransStartTime(transid_t trans_id);
-
 private:
     //------------- Basic stuffs goes here -----------------------
     timestamp_t _now;

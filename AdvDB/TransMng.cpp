@@ -8,7 +8,6 @@
 #include"TransMng.h"
 #include"DataMng.h"
 
-
 // The +1 will deal with the annoying 1-index
 extern DataMng* DM[SITE_COUNT + 1];
 
@@ -23,6 +22,10 @@ namespace {
     void print_abort(transid_t trans_id) {
         std::cout << "Transaction T" << trans_id << " already aborted, ignore this command\n";
     }
+
+    void err_inconsist() {
+        std::cout << "ERROR: Internal state inconsist\n";
+    };
 
     transid_t parse_trans_id(std::string s) {
         try {
@@ -75,11 +78,15 @@ namespace {
         }
     }
 
-    // this helper function will split multi commands and remove the spaces
+    // this helper function will split multi commands and remove the spaces and comments
     std::vector<std::string> split_multi_command(std::string line) {
         std::vector<std::string> res;
         std::string tmp = "";
-        for (char c : line) {
+        for (int i = 0; i < line.length(); ++i) {
+            if (line.substr(i, 2) == "//") {
+                break;
+            }
+            char c = line[i];
             if (c == ';' || c == '\n') {
                 res.push_back(tmp);
                 tmp = "";
@@ -140,18 +147,26 @@ TransMng::TransMng() {
 void
 TransMng::Simulate(std::istream& inputs) {
     std::string line_buffer;
-    while (std::getline(inputs, line_buffer)) {
-        std::cout << "Time Tick: " << _now << std::endl;
+    while (true) {
+        std::cout << "------------------- Time Tick: " << _now 
+            << " -------------------------" << std::endl;
         // 1. At the beginning of each timestamp, detect deadlock
-        while (DetectDeadLock()) {}
+        while (DetectDeadLock()) {
+            // 2. If we have aborted something, maybe we can execute some commands
+            TryExecuteQueue();
+        }
 
-        // 2. Split the commands read in
+        if (!std::getline(inputs, line_buffer)) {
+            break;
+        }
+
+        // 3. Split the commands read in
         std::vector<std::string> commands = split_multi_command(line_buffer);
         for (std::string command : commands) {
             ExecuteCommand(command);
         }
 
-        // 3. Try to execute what's left in the queue
+        // 4. Try to execute what's left in the queue
         TryExecuteQueue();
 
         _now++;
@@ -208,11 +223,8 @@ TransMng::ExecuteCommand(std::string line) {
         op_t write_op(_next_opid, trans_id, OP_WRITE, write_param);
         _next_opid++;
 
-        // 5. Try to execute it
-        if (!Write(write_op)) {
-            // if not successfule, queue it
-            _queued_ops.push_back(write_op);
-        }
+        // 5. put it into our execution queue
+        _queued_ops.push_back(write_op);
     }
     else if (command_type == "R") {
         // R(Tn, xn)
@@ -238,20 +250,16 @@ TransMng::ExecuteCommand(std::string line) {
         if (_trans_table[trans_id].is_ronly) {
             op_t read_op(_next_opid, trans_id, OP_RONLY, read_param);
             _next_opid++;
-            // 5. Try to execute it
-            if (!Ronly(read_op)) {
-                // if not sucessful, queue it
-                _queued_ops.push_back(read_op);
-            }
+
+            // 5. put it into our execution queue
+            _queued_ops.push_back(read_op);
         }
         else {
             op_t read_op(_next_opid, trans_id, OP_READ, read_param);
             _next_opid++;
-            // 5. Try to execute it
-            if (!Read(read_op)) {
-                // if not successful, queue it
-                _queued_ops.push_back(read_op);
-            }
+
+            // 5. put it into our execution queue
+            _queued_ops.push_back(read_op);
         }
     }
     else if (command_type == "fail") {
@@ -348,6 +356,10 @@ TransMng::TryExecuteQueue() {
     while (!_queued_ops.empty()) {
         op_t op = _queued_ops.front();
         _queued_ops.pop_front();
+        if (_trans_table[op.trans_id].will_abort) {
+            // this transaction has already aborted, ignore
+            continue;
+        }
         switch (op.op_type) {
         case OP_READ: {
             if (!Read(op)) {
@@ -396,17 +408,6 @@ TransMng::ReceiveWriteResponse(op_t op, siteid_t site_id) {
         << std::endl;
 }
 
-timestamp_t
-TransMng::QueryTransStartTime(transid_t trans_id) {
-    if (!_trans_table.count(trans_id)) {
-        std::cout << "ERROR: Transaction T" << trans_id << " is not active";
-        std::exit(-1);
-    }
-    else {
-        return _trans_table[trans_id].start_ts;
-    }
-}
-
 void
 TransMng::Begin(transid_t trans_id, bool is_ronly) {
     if (_trans_table.count(trans_id)) {
@@ -422,7 +423,7 @@ TransMng::Finish(transid_t trans_id) {
         std::cout << "Transaction T" << trans_id << " has already aborted\n";
     }
     else {
-        for (siteid_t site_id : _trans_table[trans_id].visited_sites) {
+        for (siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++) {
             DM[site_id]->Commit(trans_id, _now);
         }
         std::cout << "Transaction T" << trans_id << " finished succesfully!\n";
@@ -436,8 +437,8 @@ TransMng::Abort(transid_t trans_id) {
         // already aborted, do nothing
     }
     else {
-        for (siteid_t siteid_t : _trans_table[trans_id].visited_sites) {
-            DM[siteid_t]->Abort(trans_id);
+        for (siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++) {
+            DM[site_id]->Abort(trans_id);
         }
         _trans_table[trans_id].will_abort = true;
     }
@@ -453,10 +454,15 @@ TransMng::Read(op_t op) {
             continue;
         }
 
-        // let DM execute it
-        if (DM[site_id]->Read(op)) {
-            _trans_table[op.trans_id].visited_sites.insert(site_id);
-            return true;
+        if (DM[site_id]->GetReadLock(op.trans_id, item_id)) {
+            // let DM execute it
+            if (DM[site_id]->Read(op)) {
+                _trans_table[op.trans_id].visited_sites.insert(site_id);
+                return true;
+            }
+            else {
+                err_inconsist();
+            }
         }
     }
 
@@ -493,16 +499,26 @@ TransMng::Write(op_t op) {
     int       value = op.param.w_param.value;
 
     // 5. broadcase to all the sites
-    bool success = false;
+    bool success = true;
     for (siteid_t site_id : _item_sites[item_id]) {
         if (!_site_status[site_id]) {
             // this site is down, try next one
             continue;
         }
 
-        DM[site_id]->Write(op);
-        _trans_table[trans_id].visited_sites.insert(site_id);
-        success = true;
+        success &= DM[site_id]->GetWriteLock(trans_id, item_id);
+    }
+
+    if (success){
+        for (siteid_t site_id : _item_sites[item_id]) {
+            if (!_site_status[site_id]) {
+                // this site is down, try next one
+                continue;
+            }
+
+            DM[site_id]->Write(op);
+            _trans_table[trans_id].visited_sites.insert(site_id);
+        }
     }
 
     return success;
