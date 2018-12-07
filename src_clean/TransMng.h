@@ -1,14 +1,22 @@
+/**
+ * Author: Dayou Du (dd2645@nyu.edu)
+ * Date: 2018-12-06
+ * Description: Transaction manager translates read and write requests on variables to read and write request on copies.
+ *
+**/
 #pragma once
+
 #include"Common.h"
 #include<unordered_map>
 #include<unordered_set>
 #include<list>
+
 class TransMng {
 public:
     TransMng();
 
     // The main simulation loop
-    void Simulate(std::istream& inputs);
+    void Simulate(std::istream &inputs);
 
     // The response of a read operation
     void ReceiveReadResponse(op_t op, siteid_t site_id, int value);
@@ -19,7 +27,7 @@ public:
 private:
     //------------- Basic stuffs goes here -----------------------
     timestamp_t _now;
-    opid_t      _next_opid;
+    opid_t _next_opid;
 
     //------------- Site Status ----------------------------------
     // For simplicity we deal with the annoying 1-index here
@@ -29,18 +37,21 @@ private:
 
     //------------- Active Transaction Table ---------------------
     struct trans_table_item {
-        timestamp_t                  start_ts;
-        bool                         is_ronly;
-        bool                         will_abort;
-        bool                         waiting_commit;
+        timestamp_t start_ts;
+        bool is_ronly;
+        bool will_abort;
+        bool waiting_commit;
         std::unordered_set<siteid_t> visited_sites;
+
         trans_table_item() {}
+
         trans_table_item(timestamp_t ts, bool ronly) {
             start_ts = ts;
             is_ronly = ronly;
             will_abort = false;
         }
     };
+
     std::unordered_map<transid_t, trans_table_item> _trans_table;
 
     // Queued Ops and Finished ops - recall that there could be no available sites

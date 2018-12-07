@@ -223,8 +223,8 @@ DataMng::Ronly(op_t op, timestamp_t ts) {
     for (auto it = value_list.begin(); it != value_list.end(); it++) {
         if (it->commit_time <= ts) {
             // for r-only transactions, we have a different logic of "non-readable":
-            // We need the found commit to be after latest recover time
-            if (is_replicated(item_id) && it->commit_time < _last_up_time) {
+            // We need the to the version that was last to commit to before transaction begins
+            if (is_replicated(item_id) && ts >= _last_up_time && it->commit_time < _last_up_time) {
                 return false;
             } else {
                 TM->ReceiveReadResponse(op, _site_id, it->value);
