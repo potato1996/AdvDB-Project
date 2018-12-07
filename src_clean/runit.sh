@@ -18,6 +18,6 @@ OUTPRE="out"
 
 for f in ${INS}; do
 	echo "${PROGRAM} ${INDIR}/${INPRE}${f} > ${OUTDIR}/${OUTPRE}${f}"
-	${PROGRAM} ${INDIR}/${INPRE}${f} > ${OUTDIR}/${OUTPRE}${f} 2>&1 &
+	${PROGRAM} ${INDIR}/${INPRE}${f} > ${OUTDIR}/${OUTPRE}${f} &
 done
 
