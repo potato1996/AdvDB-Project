@@ -7,7 +7,7 @@ shift
 OUTDIR=${1:-./outputs}
 echo "program=<$PROGRAM> indir=<$INDIR> outdir=<$OUTDIR>"
 
-INS="`seq 1 23`" 
+INS="`seq 1 25`" 
 INPRE="test"
 OUTPRE="out"
 
@@ -17,7 +17,7 @@ OUTPRE="out"
 ############################################################################
 
 for f in ${INS}; do
-	echo "${PROGRAM} ${INDIR}/${INPRE}${f}"
+	echo "${PROGRAM} ${INDIR}/${INPRE}${f} > ${OUTDIR}/${OUTPRE}${f}"
 	${PROGRAM} ${INDIR}/${INPRE}${f} > ${OUTDIR}/${OUTPRE}${f} 2>&1 &
 done
 
