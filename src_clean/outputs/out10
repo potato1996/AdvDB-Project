@@ -1,0 +1,36 @@
+------------------- Time Tick: 0 -------------------------
+------------------- Time Tick: 1 -------------------------
+------------------- Time Tick: 2 -------------------------
+------------------- Time Tick: 3 -------------------------
+Received from Site 1 WRITE operation result on Transaction T3 | OPid: 0 | Key = 2 | Value = 22
+Received from Site 2 WRITE operation result on Transaction T3 | OPid: 0 | Key = 2 | Value = 22
+Received from Site 3 WRITE operation result on Transaction T3 | OPid: 0 | Key = 2 | Value = 22
+Received from Site 4 WRITE operation result on Transaction T3 | OPid: 0 | Key = 2 | Value = 22
+Received from Site 5 WRITE operation result on Transaction T3 | OPid: 0 | Key = 2 | Value = 22
+Received from Site 6 WRITE operation result on Transaction T3 | OPid: 0 | Key = 2 | Value = 22
+Received from Site 7 WRITE operation result on Transaction T3 | OPid: 0 | Key = 2 | Value = 22
+Received from Site 8 WRITE operation result on Transaction T3 | OPid: 0 | Key = 2 | Value = 22
+Received from Site 9 WRITE operation result on Transaction T3 | OPid: 0 | Key = 2 | Value = 22
+Received from Site 10 WRITE operation result on Transaction T3 | OPid: 0 | Key = 2 | Value = 22
+------------------- Time Tick: 4 -------------------------
+Received from Site 1 WRITE operation result on Transaction T2 | OPid: 1 | Key = 4 | Value = 44
+Received from Site 2 WRITE operation result on Transaction T2 | OPid: 1 | Key = 4 | Value = 44
+Received from Site 3 WRITE operation result on Transaction T2 | OPid: 1 | Key = 4 | Value = 44
+Received from Site 4 WRITE operation result on Transaction T2 | OPid: 1 | Key = 4 | Value = 44
+Received from Site 5 WRITE operation result on Transaction T2 | OPid: 1 | Key = 4 | Value = 44
+Received from Site 6 WRITE operation result on Transaction T2 | OPid: 1 | Key = 4 | Value = 44
+Received from Site 7 WRITE operation result on Transaction T2 | OPid: 1 | Key = 4 | Value = 44
+Received from Site 8 WRITE operation result on Transaction T2 | OPid: 1 | Key = 4 | Value = 44
+Received from Site 9 WRITE operation result on Transaction T2 | OPid: 1 | Key = 4 | Value = 44
+Received from Site 10 WRITE operation result on Transaction T2 | OPid: 1 | Key = 4 | Value = 44
+------------------- Time Tick: 5 -------------------------
+------------------- Time Tick: 6 -------------------------
+Transaction T2 finished succesfully!
+Received from Site 1 READ operation result on Transaction T3 | OPid: 2 | Key = 4 | Value = 44
+------------------- Time Tick: 7 -------------------------
+Transaction T3 finished succesfully!
+------------------- Time Tick: 8 -------------------------
+Received from Site 1 READ operation result on Transaction T1 | OPid: 3 | Key = 2 | Value = 22
+------------------- Time Tick: 9 -------------------------
+Transaction T1 finished succesfully!
+------------------- Time Tick: 10 -------------------------
