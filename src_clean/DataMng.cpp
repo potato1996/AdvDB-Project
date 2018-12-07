@@ -64,7 +64,6 @@ DataMng::DataMng(siteid_t site_id) {
     // basic stuff
     _site_id = site_id;
     _is_up = true;
-    _last_up_time = -1;
 
     // initialize the data items
     for (itemid_t item_id = 1; item_id <= ITEM_COUNT; item_id++) {
@@ -131,9 +130,11 @@ DataMng::DumpItem(itemid_t item_id) {
 }
 
 void
-DataMng::Fail() {
+DataMng::Fail(timestamp_t _ts) {
     // simply clean up the memory related stuff
     _is_up = false;
+    _last_fail_time.push_back(_ts);
+
     _memory.clear();
     _readable.clear();
     _lock_table.clear();
@@ -143,7 +144,7 @@ DataMng::Fail() {
 void
 DataMng::Recover(timestamp_t _ts) {
     _is_up = true;
-    _last_up_time = _ts;
+    _last_up_time.push_back(_ts);
 
     // we don't allow to read replicated data until we COMMIT a write on it
     for (const auto &p : _disk) {
@@ -224,8 +225,14 @@ DataMng::Ronly(op_t op, timestamp_t ts) {
         if (it->commit_time <= ts) {
             // for r-only transactions, we have a different logic of "non-readable":
             // We need the to the version that was last to commit to before transaction begins
-            if (is_replicated(item_id) && ts >= _last_up_time && it->commit_time < _last_up_time) {
-                return false;
+            if (is_replicated(item_id)) {
+                for(timestamp_t last_fail_time: _last_fail_time){
+                    if (ts >= last_fail_time && it->commit_time < last_fail_time) {
+                        return false;
+                    }
+                }
+                TM->ReceiveReadResponse(op, _site_id, it->value);
+                return true;
             } else {
                 TM->ReceiveReadResponse(op, _site_id, it->value);
                 return true;

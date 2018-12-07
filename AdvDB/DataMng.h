@@ -18,14 +18,14 @@ public:
     //------------- Basic stuffs goes here -----------------------
     siteid_t _site_id;
     bool _is_up;
-    timestamp_t _last_up_time;
-
+    std::list<timestamp_t> _last_fail_time;
+    std::list<timestamp_t> _last_up_time;
     // Follow the data initialization rules for the given site_id
     DataMng(siteid_t site_id);
 
     //--------------------tester cause events----------------------
     // Fail this site
-    void Fail();
+    void Fail(timestamp_t _ts);
 
     // Recover this site
     void Recover(timestamp_t _ts);

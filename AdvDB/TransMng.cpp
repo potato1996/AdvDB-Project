@@ -322,7 +322,7 @@ void
 TransMng::Fail(siteid_t site_id) {
     if (_site_status[site_id]) {
         // fail the DM
-        DM[site_id]->Fail();
+        DM[site_id]->Fail(_now);
         _site_status[site_id] = false;
 
         // Abort the 2pc transactions that accessed this site so far

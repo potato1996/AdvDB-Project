@@ -1,0 +1,16 @@
+// T2 should not be able to read site 1
+begin(T1)
+fail(1)
+W(T1, x2, 1)
+beginRO(T2)
+end(T1)
+recover(1)
+R(T2, x2)
+fail(1)
+recover(1)
+R(T2, x2)
+fail(2)
+R(T2, x2)
+recover(2)
+R(T2, x2) // it can still read site 2
+end(T2)
