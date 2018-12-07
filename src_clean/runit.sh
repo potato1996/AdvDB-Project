@@ -7,7 +7,7 @@ shift
 OUTDIR=${1:-./outputs}
 echo "program=<$PROGRAM> indir=<$INDIR> outdir=<$OUTDIR>"
 
-INS="`seq 1 25`" 
+INS="`seq 1 26`" 
 INPRE="test"
 OUTPRE="out"
 
