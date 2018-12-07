@@ -1,6 +1,6 @@
 #!/bin/bash
 # Author: Dayou Du (dayoudu@nyu.edu)
-PROGRAM=${*:-./repcrec}
+PROGRAM=${1:-./build/repcrec}
 shift
 INDIR=${1:-./inputs}
 shift

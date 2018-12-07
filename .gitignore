@@ -261,4 +261,9 @@ __pycache__/
 *.pyc
 
 # CMAKE
-AdvDB/cmake-build-debug
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.o
+repcrec
+Makefile
