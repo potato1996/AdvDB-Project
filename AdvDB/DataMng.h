@@ -1,15 +1,24 @@
+/**
+ * Author: Shiyao Lei (sl6569@nyu.edu)
+ * Date: 2018-12-06
+ * Description: Data manager is used to manage the data site. It can perform read, read only(for multi-version control),
+ * write, commit, abort operations dispatched by transaction manager. It also perform recovery when site fails.
+ *
+**/
 #pragma once
+
 #include"Common.h"
 #include<map>
 #include<unordered_map>
 #include<unordered_set>
 #include<list>
+
 class DataMng {
 public:
     //------------- Basic stuffs goes here -----------------------
-    siteid_t     _site_id;
-    bool         _is_up;
-    timestamp_t  _last_up_time;
+    siteid_t _site_id;
+    bool _is_up;
+    timestamp_t _last_up_time;
 
     // Follow the data initialization rules for the given site_id
     DataMng(siteid_t site_id);
@@ -32,7 +41,7 @@ public:
     void Abort(transid_t trans_id);
 
     //Before the TM trying to read or write an item, it should get the locks first
-    
+
     // Get read lock: (S or X)
     // 1. Return true if it is safe to read
     // 2. Return false if:
@@ -77,11 +86,14 @@ private:
     // For temporal storage(memory), it seems do not need a timestamp version
     struct mem_item {
         int value;
+
         mem_item() {}
+
         mem_item(int _value) {
             value = _value;
         }
     };
+
     std::unordered_map<itemid_t, mem_item> _memory;
 
     // reads will not be allowed at recovered sites until a committed write takes place
@@ -90,14 +102,17 @@ private:
     // For non-volatile storage(disk), we use multi-version control
     // Here I use a map because the dump function needs an order
     struct disk_item {
-        int         value;
+        int value;
         timestamp_t commit_time;
+
         disk_item() {}
+
         disk_item(int _value, timestamp_t _ts) {
             value = _value;
             commit_time = _ts;
         }
     };
+
     std::map<itemid_t, std::list<disk_item>> _disk;
 
     //------------- Now begin the lock part ----------------------
@@ -109,15 +124,18 @@ private:
 
     struct lock_queue_item_t {
         lock_type_t lock_type;
-        transid_t   trans_id;
+        transid_t trans_id;
+
         lock_queue_item_t() {
             lock_type = NONE;
             trans_id = -1;
         }
+
         lock_queue_item_t(transid_t _t, lock_type_t _l) {
             lock_type = _l;
             trans_id = _t;
         }
+
         bool operator==(lock_queue_item_t _other) {
             return trans_id == _other.trans_id && lock_type == _other.lock_type;
         }
@@ -125,12 +143,14 @@ private:
 
     // The lock structure on each data item
     struct lock_table_item_t {
-        lock_type_t                      lock_type;
-        std::unordered_set<transid_t>    trans_holding;
-        std::list<lock_queue_item_t>     lock_queue;
+        lock_type_t lock_type;
+        std::unordered_set<transid_t> trans_holding;
+        std::list<lock_queue_item_t> lock_queue;
+
         lock_table_item_t() {
             lock_type = NONE;
         }
+
         bool check_exist(lock_queue_item_t _lhs) {
             for (auto _rhs : lock_queue) {
                 if (_lhs == _rhs) {
@@ -140,15 +160,18 @@ private:
             return false;
         }
     };
+
     std::unordered_map<itemid_t, lock_table_item_t> _lock_table;
 
     //------------- Active Transaction Table ---------------------
     struct trans_table_item {
         std::unordered_set<itemid_t> modified_item;
+
         // std::unordered_set<itemid_t> locks_holding;
         // std::unordered_set<itemid_t> locks_waiting;
         trans_table_item() {}
     };
+
     std::unordered_map<transid_t, trans_table_item> _trans_table;
 
 

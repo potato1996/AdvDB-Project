@@ -1,14 +1,13 @@
 #include "DataMng.h"
 #include "TransMng.h"
-#include "Common.h"
 
 #include<iostream>
 #include<fstream>
 
-DataMng* DM[SITE_COUNT + 1];
-TransMng* TM;
+DataMng *DM[SITE_COUNT + 1];
+TransMng *TM;
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     // initialize TM
     TM = new TransMng();
 
@@ -23,12 +22,10 @@ int main(int argc, char** argv) {
         std::ifstream infile(argv[1]);
         if (!infile.is_open()) {
             std::cout << "ERROR Open Input File\n";
-        }
-        else {
+        } else {
             TM->Simulate(infile);
         }
-    }
-    else {
+    } else {
         TM->Simulate(std::cin);
     }
 

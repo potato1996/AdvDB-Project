@@ -1,3 +1,36 @@
+/**
+ * Author: Dayou Du (dd2645@nyu.edu)
+ * Date: 2018-12-06
+ * Description: Transaction manager translates read and write requests on variables to read and write request on copies.
+ *  -----------------------------------------------------------------------------------------
+ *          name          |         Inputs       |                  output
+ *  -----------------------------------------------------------------------------------------
+ *  Simulate              |inputs                |
+ *  -----------------------------------------------------------------------------------------
+ *  ReceiveReadResponse   |site_id, value        |
+ *  -----------------------------------------------------------------------------------------
+ *  ReceiveWriteResponse  |site_id               |
+ *  -----------------------------------------------------------------------------------------
+ *  DetectDeadLock        |                      |true if there is deadlock, false otherwise
+ *  -----------------------------------------------------------------------------------------
+ *  TryExecuteQueue       |                      |
+ *  -----------------------------------------------------------------------------------------
+ *  ExecuteCommand        |line                  |
+ *  -----------------------------------------------------------------------------------------
+ *  Begin                 |trans_id, is_ronly    |
+ *  -----------------------------------------------------------------------------------------
+ *  Finish                |trans_id              |
+ *  -----------------------------------------------------------------------------------------
+ *  Abort                 |trans_id              |
+ *  -----------------------------------------------------------------------------------------
+ *  Read                  |op                    |true if it can be readed, false otherwise
+ *  -----------------------------------------------------------------------------------------
+ *  Ronly                 |op                    |true if it can be readed, false otherwise
+ *  -----------------------------------------------------------------------------------------
+ *  Write                 |op                    |true if it can be written, false otherwise
+ *  -----------------------------------------------------------------------------------------
+**/
+
 #include<cstddef>
 #include<cstdio>
 #include<cstdlib>
@@ -9,7 +42,7 @@
 #include"DataMng.h"
 
 // The +1 will deal with the annoying 1-index
-extern DataMng* DM[SITE_COUNT + 1];
+extern DataMng *DM[SITE_COUNT + 1];
 
 // helper functions
 namespace {
@@ -90,11 +123,9 @@ namespace {
             if (c == ';' || c == '\n') {
                 res.push_back(tmp);
                 tmp = "";
-            }
-            else if (c == ' ') {
+            } else if (c == ' ') {
                 continue;
-            }
-            else {
+            } else {
                 tmp.push_back(c);
             }
         }
@@ -145,11 +176,11 @@ TransMng::TransMng() {
 // ------------------- Main Loop -----------------------------
 
 void
-TransMng::Simulate(std::istream& inputs) {
+TransMng::Simulate(std::istream &inputs) {
     std::string line_buffer;
     while (true) {
-        std::cout << "------------------- Time Tick: " << _now 
-            << " -------------------------" << std::endl;
+        std::cout << "------------------- Time Tick: " << _now
+                  << " -------------------------" << std::endl;
         // 1. At the beginning of each timestamp, detect deadlock
         while (DetectDeadLock()) {
             // 2. If we have aborted something, maybe we can execute some commands
@@ -186,22 +217,19 @@ TransMng::ExecuteCommand(std::string line) {
         // begin(Tn)
         transid_t trans_id = parse_trans_id(parsed_line[1]);
         Begin(trans_id, false);
-    }
-    else if (command_type == "beginRO") {
+    } else if (command_type == "beginRO") {
         // beginRO(Tn)
         transid_t trans_id = parse_trans_id(parsed_line[1]);
         Begin(trans_id, true);
-    }
-    else if (command_type == "end") {
+    } else if (command_type == "end") {
         // end(Tn)
         transid_t trans_id = parse_trans_id(parsed_line[1]);
         Finish(trans_id);
-    }
-    else if (command_type == "W") {
+    } else if (command_type == "W") {
         // W(Tn, xn, v)
         transid_t trans_id = parse_trans_id(parsed_line[1]);
-        itemid_t  item_id = parse_item_id(parsed_line[2]);
-        int       value = parse_value(parsed_line[3]);
+        itemid_t item_id = parse_item_id(parsed_line[2]);
+        int value = parse_value(parsed_line[3]);
         // 1. if this transaction is invalid, report error
         if (!_trans_table.count(trans_id)) {
             print_command_error();
@@ -225,11 +253,10 @@ TransMng::ExecuteCommand(std::string line) {
 
         // 5. put it into our execution queue
         _queued_ops.push_back(write_op);
-    }
-    else if (command_type == "R") {
+    } else if (command_type == "R") {
         // R(Tn, xn)
         transid_t trans_id = parse_trans_id(parsed_line[1]);
-        itemid_t  item_id = parse_item_id(parsed_line[2]);
+        itemid_t item_id = parse_item_id(parsed_line[2]);
         // 1. if this transaction is invalid, report error
         if (!_trans_table.count(trans_id)) {
             print_command_error();
@@ -253,45 +280,37 @@ TransMng::ExecuteCommand(std::string line) {
 
             // 5. put it into our execution queue
             _queued_ops.push_back(read_op);
-        }
-        else {
+        } else {
             op_t read_op(_next_opid, trans_id, OP_READ, read_param);
             _next_opid++;
 
             // 5. put it into our execution queue
             _queued_ops.push_back(read_op);
         }
-    }
-    else if (command_type == "fail") {
+    } else if (command_type == "fail") {
         siteid_t site_id = parse_site_id(parsed_line[1]);
         Fail(site_id);
-    }
-    else if (command_type == "recover") {
+    } else if (command_type == "recover") {
         siteid_t site_id = parse_site_id(parsed_line[1]);
         Recover(site_id);
-    }
-    else if (command_type == "dump") {
+    } else if (command_type == "dump") {
         if (parsed_line.size() == 1) {
             // dump()
             DumpAll();
-        }
-        else if (parsed_line.size() == 2) {
+        } else if (parsed_line.size() == 2) {
             if (parsed_line[1][0] == 'x') {
                 // dump(xi)
                 itemid_t item_id = parse_item_id(parsed_line[1]);
                 DumpItem(item_id);
-            }
-            else {
+            } else {
                 // dump(s)
                 siteid_t site_id = parse_site_id(parsed_line[1]);
                 DumpSite(site_id);
             }
-        }
-        else {
+        } else {
             print_command_error();
         }
-    }
-    else {
+    } else {
         print_command_error();
     }
 }
@@ -312,13 +331,12 @@ TransMng::Fail(siteid_t site_id) {
                 && (!p.second.will_abort)
                 && (p.second.visited_sites.count(site_id))) {
                 std::cout << "Transaction T" << p.first
-                    << " aborted, because it has accessed Site " << site_id
-                    << " and this site failed\n";
+                          << " aborted, because it has accessed Site " << site_id
+                          << " and this site failed\n";
                 Abort(p.first);
             }
         }
-    }
-    else {
+    } else {
         std::cout << "Site " << site_id << " is not up yet\n";
     }
 }
@@ -361,28 +379,28 @@ TransMng::TryExecuteQueue() {
             continue;
         }
         switch (op.op_type) {
-        case OP_READ: {
-            if (!Read(op)) {
-                new_queue.push_back(op);
+            case OP_READ: {
+                if (!Read(op)) {
+                    new_queue.push_back(op);
+                }
+                break;
             }
-            break; 
-        }
-        case OP_WRITE: {
-            if (!Write(op)) {
-                new_queue.push_back(op);
+            case OP_WRITE: {
+                if (!Write(op)) {
+                    new_queue.push_back(op);
+                }
+                break;
             }
-            break;
-        }
-        case OP_RONLY: {
-            if (!Ronly(op)) {
-                new_queue.push_back(op);
+            case OP_RONLY: {
+                if (!Ronly(op)) {
+                    new_queue.push_back(op);
+                }
+                break;
             }
-            break;
-        }
-        default: {
-            std::cout << "ERROR: Invalid case\n";
-            std::exit(-1);
-        }
+            default: {
+                std::cout << "ERROR: Invalid case\n";
+                std::exit(-1);
+            }
         }
     }
     _queued_ops.swap(new_queue);
@@ -390,22 +408,22 @@ TransMng::TryExecuteQueue() {
 
 void
 TransMng::ReceiveReadResponse(op_t op, siteid_t site_id, int value) {
-    std::cout << "Received from Site " << site_id 
-        << " READ operation result on Transaction T" << op.trans_id
-        << " | OPid: " << op.op_id
-        << " | Key = " << op.param.r_param.item_id
-        << " | Value = " << value
-        << std::endl;
+    std::cout << "Received from Site " << site_id
+              << " READ operation result on Transaction T" << op.trans_id
+              << " | OPid: " << op.op_id
+              << " | Key = " << op.param.r_param.item_id
+              << " | Value = " << value
+              << std::endl;
 }
 
 void
 TransMng::ReceiveWriteResponse(op_t op, siteid_t site_id) {
     std::cout << "Received from Site " << site_id
-        << " WRITE operation result on Transaction T" << op.trans_id
-        << " | OPid: " << op.op_id
-        << " | Key = " << op.param.w_param.item_id
-        << " | Value = " << op.param.w_param.value
-        << std::endl;
+              << " WRITE operation result on Transaction T" << op.trans_id
+              << " | OPid: " << op.op_id
+              << " | Key = " << op.param.w_param.item_id
+              << " | Value = " << op.param.w_param.value
+              << std::endl;
 }
 
 void
@@ -421,8 +439,7 @@ TransMng::Finish(transid_t trans_id) {
     // The instruction assume that the next command will not arrive if there are pending operations
     if (_trans_table[trans_id].will_abort) {
         std::cout << "Transaction T" << trans_id << " has already aborted\n";
-    }
-    else {
+    } else {
         for (siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++) {
             DM[site_id]->Commit(trans_id, _now);
         }
@@ -435,8 +452,7 @@ void
 TransMng::Abort(transid_t trans_id) {
     if (_trans_table[trans_id].will_abort) {
         // already aborted, do nothing
-    }
-    else {
+    } else {
         for (siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++) {
             DM[site_id]->Abort(trans_id);
         }
@@ -459,8 +475,7 @@ TransMng::Read(op_t op) {
             if (DM[site_id]->Read(op)) {
                 _trans_table[op.trans_id].visited_sites.insert(site_id);
                 return true;
-            }
-            else {
+            } else {
                 err_inconsist();
             }
         }
@@ -472,8 +487,8 @@ TransMng::Read(op_t op) {
 
 bool
 TransMng::Ronly(op_t op) {
-    itemid_t    item_id = op.param.r_param.item_id;
-    transid_t   trans_id = op.trans_id;
+    itemid_t item_id = op.param.r_param.item_id;
+    transid_t trans_id = op.trans_id;
     timestamp_t start_ts = _trans_table[trans_id].start_ts;
     // for a read operation, send it to any of the sites should be fine
     for (siteid_t site_id : _item_sites[item_id]) {
@@ -495,8 +510,8 @@ TransMng::Ronly(op_t op) {
 bool
 TransMng::Write(op_t op) {
     transid_t trans_id = op.trans_id;
-    itemid_t  item_id = op.param.w_param.item_id;
-    int       value = op.param.w_param.value;
+    itemid_t item_id = op.param.w_param.item_id;
+    int value = op.param.w_param.value;
 
     // 5. broadcase to all the sites
     bool success = true;
@@ -509,7 +524,7 @@ TransMng::Write(op_t op) {
         success &= DM[site_id]->GetWriteLock(trans_id, item_id);
     }
 
-    if (success){
+    if (success) {
         for (siteid_t site_id : _item_sites[item_id]) {
             if (!_site_status[site_id]) {
                 // this site is down, try next one
@@ -528,9 +543,9 @@ TransMng::Write(op_t op) {
 namespace {
     // dfs-based cycle detector
     bool dfs_cycle(transid_t curr,
-        transid_t root,
-        std::unordered_map<transid_t, std::unordered_set<transid_t>>& graph,
-        std::unordered_set<transid_t>& mark_global) {
+                   transid_t root,
+                   std::unordered_map<transid_t, std::unordered_set<transid_t>> &graph,
+                   std::unordered_set<transid_t> &mark_global) {
         mark_global.insert(curr);
         for (transid_t child : graph[curr]) {
             if (child == root) {
@@ -548,15 +563,15 @@ namespace {
 
 bool
 TransMng::DetectDeadLock() {
-    
+
     // 1. get all the locks waiting graphs from the DMs
     std::unordered_map<siteid_t, std::unordered_set<siteid_t>> waiting_graph;
     for (siteid_t site_id = 1; site_id <= SITE_COUNT; site_id++) {
         if (_site_status[site_id]) {
-            
+
             // get the waiting graph from each site
             auto site_waiting_graph = DM[site_id]->GetWaitingGraph();
-           
+
             // now merge the graphs
             for (auto &p : site_waiting_graph) {
                 waiting_graph[p.first].insert(p.second.begin(), p.second.end());

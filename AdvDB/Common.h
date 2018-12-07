@@ -18,7 +18,7 @@ enum op_type_t {
 // A write operation have two params: x, v 
 struct w_param_t {
     itemid_t item_id;
-    int      value;
+    int value;
 };
 
 // A read operation only have one param
@@ -33,14 +33,15 @@ union op_param_t {
 
 // An operation looks like: W1(x, v) or R1(x)
 struct op_t {
-    opid_t        op_id;
-    transid_t     trans_id;
-    op_type_t     op_type;
-    op_param_t    param;
-    op_t(opid_t    _op_id,
-        transid_t  _trans_id,
-        op_type_t  _op_type,
-        op_param_t _op_param) {
+    opid_t op_id;
+    transid_t trans_id;
+    op_type_t op_type;
+    op_param_t param;
+
+    op_t(opid_t _op_id,
+         transid_t _trans_id,
+         op_type_t _op_type,
+         op_param_t _op_param) {
 
         op_id = _op_id;
         trans_id = _trans_id;
