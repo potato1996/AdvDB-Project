@@ -1,8 +1,8 @@
 # Adv-DB project - Replicated Concurrency Control and Re-covery
 
 Author:
-- Dayou Du
-- Shiyao Lei
+- Dayou Du (dayoudu@nyu.edu)
+- Shiyao Lei (sl6569@nyu.edu)
 
 ## Prerequisites
 
